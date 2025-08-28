@@ -33,11 +33,19 @@ if 'auth_initialized' not in st.session_state:
     names = ["Demo User"]
     usernames = ["demo"]
     # Generate a hashed password for 'demo123' compatible with multiple package versions
+    hashed_passwords = None
     try:
+        # Older API: constructor accepts list, .generate() returns list
         hashed_passwords = stauth.Hasher(["demo123"]).generate()
-    except TypeError:
-        # Newer versions of streamlit-authenticator (>=0.4) use no-arg constructor with .hash()
-        hashed_passwords = stauth.Hasher().hash(["demo123"])
+    except Exception:
+        try:
+            # Newer API: no-arg constructor, .hash() accepts single string and returns string
+            single_hash = stauth.Hasher().hash("demo123")
+            hashed_passwords = [single_hash]
+        except Exception:
+            # Some variants accept list in .hash(); ensure list output
+            maybe_list = stauth.Hasher().hash(["demo123"])  # type: ignore
+            hashed_passwords = maybe_list if isinstance(maybe_list, list) else [maybe_list]
     st.session_state['auth_config'] = {
         'names': names,
         'usernames': usernames,
