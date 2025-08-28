@@ -1,0 +1,25 @@
+
+
+
+
+
+
+
+
+ Campaign Summary for Brain Tease (Last 7 Days)
+	•	Installs: 586
+	•	Spend: $495.90
+	•	Revenue: $580.31 (Ads + IAP)
+	•	Blended ROAS: 117% → Profitable 
+ Country ROAS
+	•	Strong: Taiwan (127.8%), Singapore (131%), USA (105%) → Scale these.
+	•	Weak: Other regions underperforming → Cut/reduce spend.
+ Issues
+	•	Big drop-off after Level 100+ → Add daily rewards/streaks.
+	•	Low IAP share of revenue → Optimize offers & pricing.
+ Action Plan
+	•	Scale USA, Taiwan, Singapore.
+	•	Boost retention with rewards & streaks.
+	•	Improve IAP monetization.
+	•	Cut waste in weak regions.
+

@@ -1,0 +1,30 @@
+Additional fields (if available) — please let us know if these can be shared, and why they help
+
+	1.	Breakdowns: network / campaign / adset / geo / platform / creative_id → enables per-slice ROAS forecasts, smarter budget reallocation, and clear creative winners/losers. - We will leave the Creative analysis on the roadmap for now. Will work on the template with other requested parameters 
+
+	2.	Impressions & clicks (CTR/CVR): early creative quality signal, improves CPI predictability, helps detect click-spam. -  We will leave on the roadmap for now as this is taken care my adjust fraud tools. We are building addon product for Adjust which will be used for post-install prediction/analysis.   
+
+	3.	Ad revenue by format & network (+ eCPM, fill rate): separates rewarded vs interstitial impact, sharpens LTV, optimizes ad load/mediation mix. We don’t want to drill down ad format level . High level, it will be Ad revenue , IAP revenue, Subscription Revenue 
+
+	4.	Payer signals: payer rate by day, time-to-first-purchase, SKU/price (gross vs net) → tighter monetization curves and precise ARPPU/ARPU lift targets.Yes , Need to align this as per setup on Adjust 
+
+	5.	Engagement & gameplay: sessions/day, avg session length, tutorial/level completion, time-to-level → predicts retention slope, surfaces churn hotspots, guides concrete difficulty tweaks. Not sure all these data points are available on Adjust..
+
+	6.	iOS/quality hygiene: SKAN postbacks, ATT opt-in rate, fraud/reinstall flags → correct attribution/ROAS on iOS and cleaner, unbiased cohorts. We will leave on the roadmap for now as this is taken care my adjust fraud tools.
+
+⸻
+
+Phase 1 (pilot) — short proposal (Should we use a conversational AI agent as well?.)
+	1.	Confirm scope: target apps/platforms/geos/campaigns and a D30 ROAS goal.
+	2.	Deliver a 5-tab upload template (UA, retention, revenue, ad-format, gameplay).
+	3.	Import recent history; normalize currency and timezone. Currency will be USD and Timezone : UTC.
+	4.	Build install-cohort tables (D0–D30 retention and cumulative ARPU).
+	5.	Fit Day-3 forecasting model to project D15/D30/D45/D90 ROAS with confidence bands.
+	6.	Run KPI gap analysis vs target (retention, ARPU, CPI deltas).
+	7.	Produce recommendation set: budget shifts, geo/campaign scaling, creative tests, game tweaks.
+	8.	Add basic “traffic-cop” alerts for CPI/retention drift.
+	9.	Validate with backtests and document accuracy & assumptions.
+	10.	Share a concise readout and align on Phase 2 automation scope.
+
+Note: We’re also preparing the full project proposal covering end-to-end architecture, automation, security, timelines, and pricing.
+

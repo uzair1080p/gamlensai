@@ -1,0 +1,50 @@
+Product Summary: GameLens AI
+1. Data Inputs We Can Feed in Daily or connect via API
+We’d start with a core daily ingestion pipeline pulling raw data from ad networks, MMP (e.g., Adjust/Appsflyer), and in-game telemetry.
+a) Player Progression & Engagement
+	•	Level progression events (per user, per cohort)
+	•	Time to complete each level
+	•	Drop-off points (where players churn in the funnel)
+	•	Session count & average playtime per day
+b) Cost Data
+	•	Daily ad spend per campaign, per geo, per network
+	•	CPI (Cost per Install)
+	•	CPM & CTR (ad performance metrics)
+c) Revenue Data
+	•	IAP revenue per cohort/day
+	•	Ad revenue (rewarded video, interstitials) per cohort/day
+	•	ARPU, ARPPU
+	•	Purchase conversion rate
+d) Retention Data
+	•	D1, D3, D7, D15, D30 retention per cohort
+	•	Player churn probability scores
+	•	Return player events (re-engagement)
+
+
+
+
+2. AI-Driven Output After First 3 Days
+Here’s what the tool should do automatically after ingesting just 3 days of data for a new UA campaign:
+a) ROAS Projections
+	•	Predict D15, D30, D45, and D90 ROAS for each campaign/cohort if campaign continues at current spend & performance.
+	•	Use retention + monetization curves to forecast lifetime revenue.
+	•	Confidence intervals (e.g., “80% chance D30 ROAS will be between 18% and 23%”).
+b) KPI Gap Analysis & Targets
+	•	If target ROAS is known, calculate:
+	•	Spend adjustment needed to hit target
+	•	Retention improvements required (e.g., “D7 retention needs to increase from 14% → 18% to hit D30 goal”)
+	•	Revenue per user boost required (e.g., “ARPU needs +$0.12 by D15”)
+c) AI Recommendations
+	•	Cost suggestions: Reduce/increase budget by X% on low/high performing campaigns
+	•	Retention tactics: Which levels are causing drop-offs and potential fixes (e.g., “Level 7 has 45% churn — test difficulty reduction”)
+	•	Monetization suggestions: Optimizing IAP pricing, ad placement, or rewarded video frequency
+	•	Geo/Campaign optimization: Shift budget to top-performing geos/ad networks
+	•	Creative testing suggestions based on early click-through to retention correlation
+
+3. Additional Features That Would Be Killer
+	•	Automated Campaign Grading → “This campaign is an A+ for long-term ROAS, this one is a C-.”
+	•	Daily “Traffic Cop” Alerts → Slack/Email notifications when CPI is too high or retention/revenue drops below thresholds.
+	•	Scenario Simulator → “If we increase retention by 2% and ARPU by $0.10, D30 ROAS jumps from 25% → 36%.”
+	•	Churn Prediction Heatmap → Visualizing where in the game players are most likely to quit.
+	•	LTV by Player Segment → High spenders vs. ad-only players.
+

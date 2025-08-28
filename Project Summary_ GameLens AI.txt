@@ -1,0 +1,65 @@
+Project Summary: GameLens AI
+AI-Powered Forecasting & Optimization for Mobile Games
+Overview GameLens AI is a next-generation business intelligence platform designed specifically for mobile game studios. By ingesting early campaign and player data, the tool uses AI to forecast long-term performance, identify growth opportunities, and prescribe precise actions to maximize return on ad spend (ROAS), player retention, and revenue.
+Problem Mobile game studios face a critical challenge: determining whether a new user acquisition (UA) campaign will deliver profitable returns before committing large budgets. Current BI tools focus on reporting historical data, but lack actionable predictions and clear optimization guidance based on just a few days of performance.
+Solution GameLens AI bridges this gap by combining daily data ingestion from MMPs, ad networks, and in-game telemetry with advanced predictive models. Within just 3 days of a campaign launch, the platform projects D15, D30, D45, and D90 ROAS, identifies performance gaps, and recommends specific changes to cost, retention, and monetization strategies.
+Core Data Inputs
+	•	Player Progression: Level completion, drop-off points, session data.
+	•	Cost Data: Ad spend, CPI, CPM, CTR by campaign/geo/network.
+	•	Revenue Data: IAP revenue, ad revenue, ARPU, ARPPU, conversion rates.
+	•	Retention Data: D1, D3, D7 retention, churn probability.
+AI-Driven Outputs
+	•	ROAS Forecasting for D15, D30, D45, and D90 with confidence intervals.
+	•	KPI Gap Analysis: Targets for retention, ARPU, and spend adjustments to hit profitability goals.
+	•	Actionable Recommendations: Campaign scaling, budget shifts, creative testing, difficulty tuning, monetization optimization.
+	•	Scenario Simulator: Model the impact of changes to retention, monetization, or UA spend.
+Competitive Advantage Unlike generic BI dashboards, GameLens AI acts as both a crystal ball and a coach—predicting future performance and prescribing exact next steps for optimization. This enables studios to make data-backed decisions faster, reduce wasted UA spend, and maximize lifetime value (LTV) from their player base.
+Target Users
+	•	Mobile game publishers
+	•	Indie studios
+	•	UA managers & growth teams
+	•	Game monetization specialists
+Impact By transforming early player data into actionable forecasts, GameLens AI will help game studios:
+	•	Reduce campaign risk
+	•	Increase marketing efficiency
+	•	Boost player retention and monetization
+	•	Achieve profitability faster
+
+
+
+
+
+
+
+
+
+Mockup Screens
+
+
+Phase 1 – Manual Data Ingestion & Validation
+Goal: Validate AI projections and recommendations before building automation.
+	•	Create a basic spreadsheet or lightweight database to manually upload daily level progression, cost, revenue, and retention data.
+	•	Connect this to an AI/ML model (could start in Python or Google Colab) to produce:
+	•	ROAS forecasts (D15, D30, D45, D90)
+	•	KPI gap analysis
+	•	AI recommendations
+	•	Compare AI outputs with actual performance over time to confirm accuracy.
+
+Phase 2 – Automated Data Ingestion
+Goal: Reduce manual work, ensure daily freshness of data.
+	•	Set up API connections to:
+	•	MMPs (Adjust, Appsflyer) for installs, costs, retention, level progression
+	•	Automate ETL pipeline (Extract → Transform → Load) into a database.
+	•	Integrate AI model so outputs update daily without human input.
+
+Phase 3 – Full Productization
+Goal: Make it a self-service SaaS tool for any game studio.
+	•	Build a web-based dashboard (React + Node/Flask + cloud DB).
+	•	Allow self-onboarding:
+	•	Users connect their APIs
+	•	Upload historical data if needed
+	•	Add customizable alerts (Slack, email) for KPI changes.
+	•	Implement scenario simulator to test UA spend, retention, and monetization changes.
+	•	Package pricing tiers for indie vs enterprise studios.
+
+

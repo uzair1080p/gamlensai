@@ -1,0 +1,5 @@
+﻿country,installs,retention_rate_d1,retention_rate_d2,retention_rate_d3,retention_rate_d4,retention_rate_d5,retention_rate_d6,retention_rate_d7,retention_rate_d10,retention_rate_d14,retention_rate_d18,retention_rate_d21,retention_rate_d24
+United States,282,0.3085,0.195,0.1738,0.1135,0.1241,0.1028,0.1135,0.0734,0.0,0.0,0.0,0.0
+United Kingdom,104,0.4615,0.3173,0.2212,0.1731,0.1635,0.1442,0.1827,0.0676,0.0,0.0,0.0,0.0
+Canada,10,0.5,0.1,0.1,0.0,0.0,0.1,0.0,0.0,0.0,0.0,0.0,0.0
+Australia,8,0.125,0.25,0.125,0.0,0.125,0.25,0.125,0.2,0.0,0.0,0.0,0.0

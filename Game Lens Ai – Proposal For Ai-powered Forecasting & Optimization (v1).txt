@@ -1,0 +1,95 @@
+GameLens AI – Proposal for AI‑Powered Forecasting & Optimization for Mobile Games
+
+1) Executive Summary
+Mobile game studios struggle to know—within days—not months—whether a new UA campaign will be profitable. GameLens AI solves this by ingesting early campaign + in‑game telemetry and forecasting D15/D30/D45/D90 ROAS with confidence intervals. It pinpoints KPI gaps (retention, ARPU, cost) and prescribes concrete actions (budget shifts, creative tests, difficulty tuning, monetization changes). We will deliver this solution in three phases: (1) manual data + model validation, (2) automated ingestion + daily updates, (3) full SaaS dashboard with alerts and a scenario simulator.
+
+2) Objectives & Outcomes
+Primary Objectives 1. Forecast D15/D30/D45/D90 ROAS from first 3 days of data with CIs. 2. Run daily KPI‑gap analysis (retention, ARPU, and spend) against targets. 3. Generate prescriptive, prioritized recommendations per campaign/geo/network. 4. Provide a scenario simulator to quantify impact of changes (retention, ARPU, spend). 5. Ship a secure, self‑serve web dashboard with automated data refresh and alerts.
+Business Outcomes - Faster go/no‑go decisions on UA campaigns → higher ROAS and lower CAC waste. - Reduced manual analysis effort via automated pipelines and alerts. - Data‑driven game design and monetization improvements (difficulty, pricing, placement).
+
+3) Scope of Work by Phase
+Phase 1 — Manual Data Ingestion & Validation (PoC)
+Goal: Validate model accuracy and recommendations before automation.
+Deliverables - Lightweight data store (Google Sheet / CSV + SQLite/BigQuery/Postgres) for daily uploads covering: installs, cost, IAP revenue, ad revenue, retention (D1/D3/D7…), and level progression. - Python/Colab modeling notebooks to produce: - ROAS forecasts (D15/D30/D45/D90) with 80–95% CIs - KPI gap analysis (retention/ARPU/spend deltas to hit target ROAS) - Ranked AI recommendations (cost, creative, geo, level‑tuning, monetization) - Validation plan + weekly back‑tests comparing predictions vs actuals; accuracy report. - Simple analyst view (Streamlit/Notebook) to visualize outputs and export CSV/PDF.
+Acceptance Criteria - Back‑test across ≥3 campaigns shows D30 ROAS MAPE ≤25% (target ≤20%). - Recommendations include rationale + expected impact range and are reproducible.
+Time & Effort: 2 weeks.
+
+Phase 2 — Automated Data Ingestion & Daily Refresh
+Goal: Eliminate manual work and ensure freshness.
+Deliverables - ETL connectors/APIs for MMPs (Adjust, AppsFlyer), ad networks, and in‑game events. - Data model + warehouse tables (campaign, cohort, revenue, retention, progression). - Orchestration (Airflow/Cloud Scheduler) for daily/near‑real‑time runs. - Automated model training/inference pipelines; CI/CD for data + models. - Slack/Email alerting (“Traffic Cop”) for CPI spikes, retention/revenue drops. - Data quality checks (freshness, schema, range, outliers) + monitoring dashboard.
+Acceptance Criteria - Daily pipelines run successfully with lineage + DQ checks; rebuild in <1 hour. - Outputs (forecasts, gaps, recs) refresh automatically without human input.
+Time & Effort: 4–6 weeks.
+
+Phase 3 — Productization (Self‑Serve SaaS)
+Goal: Deliver a secure, multi‑tenant web app for any studio to self‑onboard.
+Deliverables - Web dashboard (React) + API (FastAPI/Flask/Node) + cloud DB (Postgres/BigQuery). - Self‑onboarding: connect APIs (Adjust/AppsFlyer/ad networks), upload history. - Scenario Simulator: sliders for retention/ARPU/spend; compare baseline vs proposed; show expected ROAS lift with CIs. - User/role management (RBAC), audit logs, usage analytics, rate limiting. - Alerts configuration UI (thresholds, channels) + alert digest summaries. - Billing/pricing tiers (indie vs enterprise) + usage metering.
+Acceptance Criteria - Multi‑tenant user flows tested end‑to‑end; P95 dashboard latency < 3s. - Role‑based access enforced; security checks (OWASP Top‑10) passed.
+Time & Effort: 4–6 weeks.
+
+4) Technical Approach
+4.1 Data Architecture
+	•	Sources: MMP (installs, cost, retention), ad networks (spend, CPM/CTR), game telemetry (progression, sessions), monetization (IAP/ad revenue).
+	•	Ingestion: API/S3/CSV → staging (object store) → transformations → warehouse (Postgres/BigQuery/Snowflake).
+	•	Model Inputs: Early‑day retention (D1/D3/D7), ARPU/ARPPU, CPI/CPM/CTR, level funnel metrics (churn points, time‑to‑complete), geo/network/campaign features.
+	•	Outputs: ROAS forecasts (D15/30/45/90 + CIs), KPI gap tables, prioritized recommendations, alert events, simulator scenarios.
+4.2 Modeling Strategy
+	•	Cohort LTV Forecasting: Survival models for retention (Kaplan‑Meier/Beta‑Geometric), revenue models (Gamma‑Gamma/log‑normal), or GBMs (LightGBM/XGBoost) with hierarchical features by campaign/geo/network.
+	•	Early‑Signal Fusion: Engineer early‑day features (retention curves, ARPDAU slope, RPM, CTR→Install→Day‑1 retention correlation) to predict LTV/ROAS.
+	•	Uncertainty: Conformal prediction/quantile regression for CIs.
+	•	Recommendations: Policy engine combines uplift estimates with constraints (budget caps, CPI floors, geo allowlists) to produce ranked actions with expected impact.
+	•	Back‑Testing: Rolling‑origin evaluation; MAPE/SMAPE, calibration plots, coverage of CIs, and profit‑weighted metrics.
+4.3 Alerts (“Traffic Cop”)
+	•	Threshold + anomaly‑based triggers for CPI, retention, ARPU, RPM; budget reallocation suggestions with projected ROAS impact.
+4.4 Scenario Simulator
+	•	Adjustable levers: retention (+x pp), ARPU (+$y), CPI (−z%), spend (+/−%), geo/campaign mix.
+	•	Output: New ROAS, margin, payback window; waterfall of contribution by lever.
+4.5 Security & Compliance
+	•	Data encryption at rest/in‑transit, IAM, scoped API tokens, key rotation.
+	•	PII minimization; per‑tenant data isolation; audit logging.
+	•	Optional VPC peering/private link for enterprise.
+
+5) Deliverables Checklist (by Phase)
+Artifacts - Data dictionary & schema ERD - Model cards (assumptions, features, metrics) - Validation & accuracy reports - API specs + Postman collection - Runbooks & SLA docs - User guide + onboarding wizard
+
+6) Timeline (Indicative)
+	•	Week 1: Kickoff, data access, baseline sheet/DB, initial EDA.
+	•	Week 2–3: PoC models + validation, first recommendations; weekly review.
+	•	Week 4–7: Connectors, warehouse, orchestration, automated inference, alerts.
+	•	Week 8–13: Dashboard UX, self‑onboarding, simulator, RBAC, billing.
+	•	Week 14: Hardening, load/security tests, handover & training.
+(Parallelization is possible to shorten duration if needed.)
+
+7) Team & Responsibilities
+Client - Provide API credentials (MMP, ad networks), historical exports, KPI targets. - Subject‑matter inputs on level design, monetization, creative pipeline.
+Maiden Century - Data modeling/engineering, ML development, dashboard & API, CI/CD, security. - Documentation, training, change management.
+
+8) Pricing Options (Indicative)
+Fixed, allin fees for this engagement.
+	•	Phase 1 — Manual Data Ingestion & Validation (PoC): Included during kickoff () using clientprovided sheets and sample campaigns. US$1,000 
+	•	Phase 2 — Automated Data Ingestion & Daily Refresh: US$1,500 (fixed fee).
+	•	Phase 3 — Productization (SelfServe SaaS): US$1,500 (fixed fee).
+	•	Maintenance & Support: US$200 / month — hosting ops, monitoring, backups, security patches, minor enhancements/bugfixes (up to 4 hrs/week).
+All options include standard support during build; extended SLAs available.
+
+9) Assumptions & Dependencies
+	•	Access to MMP/ad network APIs and game telemetry within Week 1–2.
+	•	Sufficient historical data (≥90 days) for back‑testing (or pilot on live campaigns).
+	•	Reasonable data quality; we will implement DQ checks and reconciliation.
+	•	Cloud accounts and security reviews facilitated by client.
+Out of Scope (initially) - Real‑time bidding optimization/intra‑day pacing; creative generation; A/B testing platform; fraud detection (can be added later).
+
+10) Risks & Mitigations
+	•	Data sparsity in early days → conservative CIs, hierarchical modeling, simulator ranges.
+	•	Attribution changes / SKAN constraints → model variants supporting SKAN.
+	•	API limits/outages → retries, back‑fills, and cached snapshots.
+
+11) Success Metrics
+	•	Forecast accuracy (MAPE/coverage), ROAS lift from recommendations, time‑to‑insight reduction, alert precision/recall, and adoption (weekly active analyst users).
+
+12) Next Steps
+	•	Approve proposal & pricing option.
+	•	Kickoff workshop; confirm KPI targets and data access list.
+	•	Share 3–6 sample campaigns (CSV/Sheets) + MMP credentials for sandbox.
+	•	Start Phase 1 build; first forecast + recommendations in Week 2.
+
+We’re excited to partner with you to bring AI‑supercharged UA decisions and game optimization to your studio.
