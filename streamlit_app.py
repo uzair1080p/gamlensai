@@ -32,9 +32,12 @@ if 'auth_initialized' not in st.session_state:
     st.session_state['auth_initialized'] = True
     names = ["Demo User"]
     usernames = ["demo"]
-    # Pre-hashed password for 'demo123' using streamlit-authenticator hasher
-    # You can regenerate with: stauth.Hasher(["demo123"]).generate()
-    hashed_passwords = stauth.Hasher(["demo123"]).generate()
+    # Generate a hashed password for 'demo123' compatible with multiple package versions
+    try:
+        hashed_passwords = stauth.Hasher(["demo123"]).generate()
+    except TypeError:
+        # Newer versions of streamlit-authenticator (>=0.4) use no-arg constructor with .hash()
+        hashed_passwords = stauth.Hasher().hash(["demo123"])
     st.session_state['auth_config'] = {
         'names': names,
         'usernames': usernames,
@@ -373,12 +376,6 @@ else:
                 name='Residuals',
                 marker=dict(color='green', opacity=0.6)
             ))
-            fig.add_hline(y=0, line_dash="dash", line_color="red")
-            fig.update_layout(
-                title="Residual Plot",
-                xaxis_title="Predicted ROAS",
-                yaxis_title="Residuals"
-            )
             st.plotly_chart(fig, use_container_width=True)
         
         # Confidence intervals
