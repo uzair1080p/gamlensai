@@ -30,51 +30,77 @@ st.set_page_config(
 # NOTE: For production, store hashed passwords and secrets in Streamlit secrets.
 if 'auth_initialized' not in st.session_state:
     st.session_state['auth_initialized'] = True
-    names = ["Demo User"]
-    usernames = ["demo"]
+    display_name = "Demo User"
+    username = "demo"
     # Generate a hashed password for 'demo123' compatible with multiple package versions
-    hashed_passwords = None
+    hashed_password = None
     try:
-        # Older API: constructor accepts list, .generate() returns list
-        hashed_passwords = stauth.Hasher(["demo123"]).generate()
+        hashed_password = stauth.Hasher(["demo123"]).generate()[0]
     except Exception:
         try:
-            # Newer API: no-arg constructor, .hash() accepts single string and returns string
-            single_hash = stauth.Hasher().hash("demo123")
-            hashed_passwords = [single_hash]
+            hashed_password = stauth.Hasher().hash("demo123")
         except Exception:
-            # Some variants accept list in .hash(); ensure list output
             maybe_list = stauth.Hasher().hash(["demo123"])  # type: ignore
-            hashed_passwords = maybe_list if isinstance(maybe_list, list) else [maybe_list]
-    st.session_state['auth_config'] = {
-        'names': names,
-        'usernames': usernames,
-        'passwords': hashed_passwords,
-        'cookie': {
-            'name': 'gamlens_auth',
-            'key': 'gamlens_cookie_key',
-            'expiry_days': 7
+            hashed_password = maybe_list[0] if isinstance(maybe_list, list) else maybe_list
+
+    # Prefer new credentials dict format
+    credentials_new = {
+        'usernames': {
+            username: {
+                'name': display_name,
+                'password': hashed_password
+            }
         }
     }
 
-config = st.session_state['auth_config']
-authenticator = stauth.Authenticate(
-    config['names'],
-    config['usernames'],
-    config['passwords'],
-    config['cookie']['name'],
-    config['cookie']['key'],
-    config['cookie']['expiry_days']
-)
+    # Legacy arrays for older versions
+    names_legacy = [display_name]
+    usernames_legacy = [username]
+    passwords_legacy = [hashed_password]
 
-name, authentication_status, username = authenticator.login('Login', 'main')
+    # Build authenticator with compatibility
+    authenticator = None
+    try:
+        # New API: Authenticate(credentials, cookie_name, key, expiry_days)
+        authenticator = stauth.Authenticate(
+            credentials_new,
+            'gamlens_auth',
+            'gamlens_cookie_key',
+            7
+        )
+        st.session_state['auth_api'] = 'new'
+    except Exception:
+        # Legacy API: Authenticate(names, usernames, passwords, cookie_name, key, expiry_days)
+        authenticator = stauth.Authenticate(
+            names_legacy,
+            usernames_legacy,
+            passwords_legacy,
+            'gamlens_auth',
+            'gamlens_cookie_key',
+            7
+        )
+        st.session_state['auth_api'] = 'legacy'
+
+# Use authenticator
+auth_api = st.session_state.get('auth_api', 'new')
+if auth_api == 'new':
+    name, authentication_status, username = authenticator.login('Login', location='main')
+else:
+    # some older versions accept ('Login','main') as positional
+    try:
+        name, authentication_status, username = authenticator.login('Login', 'main')
+    except Exception:
+        name, authentication_status, username = authenticator.login('Login')
 
 if authentication_status is False:
     st.error('Username/password is incorrect')
 elif authentication_status is None:
     st.warning('Please enter your username and password')
 else:
-    authenticator.logout('Logout', 'sidebar')
+    try:
+        authenticator.logout('Logout', location='sidebar')
+    except Exception:
+        authenticator.logout('Logout', 'sidebar')
 
     # Custom CSS
     st.markdown("""
