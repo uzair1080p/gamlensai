@@ -1,202 +1,301 @@
-import pandas as pd
-import numpy as np
 import os
-from typing import Dict, List, Tuple, Optional
+import pandas as pd
 import logging
+from typing import Dict, List, Optional, Tuple
+from pathlib import Path
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class GameLensDataLoader:
-    """Data loader for GameLens AI Phase 1 - handles Unity Ads CSV ingestion and normalization"""
-    
-    def __init__(self, data_dir: Optional[str] = "Campaign Data"):
-        # Resolve data directory robustly across different working directories (root vs notebooks)
-        self.platforms = ['Android', 'iOS']
-        self.data_dir = self._resolve_data_dir(data_dir)
+    """Data loader for GameLens AI Phase 1 - handles Unity Ads and Mistplay CSV ingestion and normalization"""
+
+    def __init__(self, data_dir: str = "Campaign Data"):
+        # Dynamically find the data directory
+        current_dir = os.getcwd()
+        project_root = current_dir
+        # Check if running from notebooks/ or src/ or root
+        if os.path.basename(current_dir) in ['notebooks', 'src']:
+            project_root = os.path.dirname(current_dir)
+        elif os.path.basename(current_dir) == 'utils': # If running from src/utils
+            project_root = os.path.dirname(os.path.dirname(current_dir))
+
+        potential_data_path = os.path.join(project_root, data_dir)
+        if os.path.exists(potential_data_path):
+            self.data_dir = potential_data_path
+        else:
+            # Fallback to current directory or parent if not found in project root
+            if os.path.exists(os.path.join(current_dir, data_dir)):
+                self.data_dir = os.path.join(current_dir, data_dir)
+            elif os.path.exists(os.path.join(os.path.dirname(current_dir), data_dir)):
+                self.data_dir = os.path.join(os.path.dirname(current_dir), data_dir)
+            else:
+                logger.warning(f"Data directory '{data_dir}' not found at '{potential_data_path}', '{current_dir}/{data_dir}', or '{os.path.dirname(current_dir)}/{data_dir}'. Using default: {data_dir}")
+                self.data_dir = data_dir # Fallback to original if all else fails
         logger.info(f"Using data directory: {self.data_dir}")
         
-    def _resolve_data_dir(self, data_dir: Optional[str]) -> str:
-        """Resolve the data directory considering various common execution contexts."""
-        candidates: List[str] = []
-        if data_dir:
-            candidates.append(data_dir)
-        # Project root inferred from this file location: src/utils/ -> project root is two levels up
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-        candidates.append(os.path.join(project_root, "Campaign Data"))
-        # Current working directory
-        cwd = os.getcwd()
-        candidates.extend([
-            os.path.join(cwd, "Campaign Data"),
-            os.path.abspath(os.path.join(cwd, os.pardir, "Campaign Data")),
-        ])
+        # Updated to include both platforms
+        self.platforms = ['Unity Ads', 'Mistplay']
+        self.supported_platforms = ['Unity Ads', 'Mistplay']
         
-        for path in candidates:
-            if os.path.exists(path):
-                return path
+    def _get_platform_directories(self) -> Dict[str, List[str]]:
+        """Get available platform directories and their subdirectories"""
+        platform_dirs = {}
         
-        # Fall back to provided path even if not found; callers will see warnings later
-        return data_dir if data_dir else "Campaign Data"
-        
-    def load_all_data(self) -> Dict[str, pd.DataFrame]:
-        """Load all CSV files from Unity Ads platforms"""
-        data: Dict[str, Dict[str, pd.DataFrame]] = {}
-        
-        for platform in self.platforms:
-            platform_dir = os.path.join(self.data_dir, "Unity Ads", platform)
-            if os.path.exists(platform_dir):
-                data[platform] = self._load_platform_data(platform_dir)
+        for platform in self.supported_platforms:
+            platform_path = os.path.join(self.data_dir, platform)
+            if os.path.exists(platform_path):
+                subdirs = [d for d in os.listdir(platform_path) 
+                          if os.path.isdir(os.path.join(platform_path, d))]
+                platform_dirs[platform] = subdirs
+                logger.info(f"Found {platform}: {subdirs}")
             else:
-                logger.warning(f"Platform directory not found: {platform_dir}")
+                logger.warning(f"Platform directory not found: {platform_path}")
                 
-        return data
+        return platform_dirs
     
-    def _load_platform_data(self, platform_dir: str) -> Dict[str, pd.DataFrame]:
-        """Load all CSV files for a specific platform"""
-        platform_data: Dict[str, pd.DataFrame] = {}
-        
-        # Map expected file patterns to standardized names
-        file_patterns = {
-            'adspend_revenue': ['Adspend', 'Adspend and Revenue', 'Adspend+ Revenue'],
-            'level_progression': ['Level Progression'],
-            'retention': ['retention'],
-            'roas': ['ROAS']
-        }
-        
-        for data_type, substrings in file_patterns.items():
-            # Case-insensitive substring match against filenames in the directory
-            try:
-                filenames = os.listdir(platform_dir)
-            except Exception as e:
-                logger.error(f"Failed listing directory {platform_dir}: {e}")
-                filenames = []
-            match = next((f for f in filenames if any(s.lower() in f.lower() for s in substrings)), None)
-            if match:
-                file_path = os.path.join(platform_dir, match)
-                try:
-                    df = pd.read_csv(file_path)
-                    platform_data[data_type] = self._clean_dataframe(df, data_type)
-                    logger.info(f"Loaded {data_type} for {os.path.basename(platform_dir)}: {df.shape}")
-                except Exception as e:
-                    logger.error(f"Error loading {file_path}: {e}")
-        
-        return platform_data
+    def _load_csv_file(self, file_path: str) -> Optional[pd.DataFrame]:
+        """Load CSV file with error handling"""
+        try:
+            if os.path.exists(file_path):
+                df = pd.read_csv(file_path)
+                logger.info(f"Loaded {file_path}: {df.shape}")
+                return df
+            else:
+                logger.warning(f"File not found: {file_path}")
+                return None
+        except Exception as e:
+            logger.error(f"Error loading {file_path}: {e}")
+            return None
     
-    def _clean_dataframe(self, df: pd.DataFrame, data_type: str) -> pd.DataFrame:
-        """Clean and standardize dataframe based on data type"""
+    def _standardize_unity_ads_data(self, df: pd.DataFrame, data_type: str, platform: str) -> pd.DataFrame:
+        """Standardize Unity Ads data format"""
         df = df.copy()
         
-        # Remove any completely empty rows/columns
-        df = df.dropna(how='all').dropna(axis=1, how='all')
+        # Add platform and data type columns
+        df['platform'] = platform
+        df['data_type'] = data_type
         
+        # Standardize column names based on data type
         if data_type == 'adspend_revenue':
-            # Standardize column names
-            df.columns = [col.lower().replace(' ', '_') for col in df.columns]
-            
-            # Convert date column if present
-            if 'day' in df.columns:
-                df['day'] = pd.to_datetime(df['day'])
+            # Handle different file naming conventions
+            if 'ad_revenue' in df.columns:
+                df['revenue'] = df['ad_revenue']
+            if 'cost' in df.columns:
+                df['spend'] = df['cost']
                 
-            # Convert numeric columns
-            numeric_cols = ['installs', 'cost', 'ad_revenue', 'revenue']
-            for col in numeric_cols:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        elif data_type == 'retention':
+            # Ensure retention columns are properly named
+            retention_cols = [col for col in df.columns if 'retention_rate' in col]
+            for col in retention_cols:
+                if col not in df.columns:
+                    df[col] = 0.0
                     
-        elif data_type in ['retention', 'roas']:
-            # Convert numeric columns
-            for col in df.columns:
-                if col not in ['country']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        elif data_type == 'roas':
+            # Ensure ROAS columns are properly named
+            roas_cols = [col for col in df.columns if 'roas_d' in col]
+            for col in roas_cols:
+                if col not in df.columns:
+                    df[col] = 0.0
                     
         elif data_type == 'level_progression':
-            # Convert event columns to numeric
-            for col in df.columns:
-                if col not in ['country']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
+            # Handle level progression data
+            if 'installs' in df.columns:
+                df['total_installs'] = df['installs']
+                
         return df
     
-    def combine_platforms(self, data: Dict[str, Dict[str, pd.DataFrame]]) -> Dict[str, pd.DataFrame]:
-        """Combine data from multiple platforms into unified datasets"""
-        combined: Dict[str, pd.DataFrame] = {}
+    def _standardize_mistplay_data(self, df: pd.DataFrame, data_type: str, platform: str) -> pd.DataFrame:
+        """Standardize Mistplay data format"""
+        df = df.copy()
         
-        # Combine adspend_revenue data
-        adspend_dfs: List[pd.DataFrame] = []
-        for platform, platform_data in data.items():
-            if 'adspend_revenue' in platform_data:
-                df = platform_data['adspend_revenue'].copy()
-                df['platform'] = platform
-                adspend_dfs.append(df)
+        # Add platform and data type columns
+        df['platform'] = platform
+        df['data_type'] = data_type
         
-        if adspend_dfs:
-            combined['adspend_revenue'] = pd.concat(adspend_dfs, ignore_index=True)
-            
-        # Combine retention data
-        retention_dfs: List[pd.DataFrame] = []
-        for platform, platform_data in data.items():
-            if 'retention' in platform_data:
-                df = platform_data['retention'].copy()
-                df['platform'] = platform
-                retention_dfs.append(df)
+        # Standardize column names based on data type
+        if data_type == 'adspend_revenue':
+            # Mistplay uses 'cost' and 'ad_revenue'
+            if 'cost' in df.columns:
+                df['spend'] = df['cost']
+            if 'ad_revenue' in df.columns:
+                df['revenue'] = df['ad_revenue']
                 
-        if retention_dfs:
-            combined['retention'] = pd.concat(retention_dfs, ignore_index=True)
-            
-        # Combine ROAS data
-        roas_dfs: List[pd.DataFrame] = []
-        for platform, platform_data in data.items():
-            if 'roas' in platform_data:
-                df = platform_data['roas'].copy()
-                df['platform'] = platform
-                roas_dfs.append(df)
-                
-        if roas_dfs:
-            combined['roas'] = pd.concat(roas_dfs, ignore_index=True)
-            
-        # Combine level progression data
-        level_dfs: List[pd.DataFrame] = []
-        for platform, platform_data in data.items():
-            if 'level_progression' in platform_data:
-                df = platform_data['level_progression'].copy()
-                df['platform'] = platform
-                level_dfs.append(df)
-                
-        if level_dfs:
-            combined['level_progression'] = pd.concat(level_dfs, ignore_index=True)
-            
-        return combined
-    
-    def validate_data(self, data: Dict[str, pd.DataFrame]) -> Dict[str, List[str]]:
-        """Validate data quality and return issues"""
-        issues: Dict[str, List[str]] = {}
-        
-        for data_type, df in data.items():
-            data_issues: List[str] = []
-            
-            # Check for missing values
-            if df.empty:
-                data_issues.append("Dataset is empty")
-            else:
-                missing_cols = df.columns[df.isnull().any()].tolist()
-                if missing_cols:
-                    data_issues.append(f"Missing values in columns: {missing_cols}")
-                
-            # Check for negative values in cost/revenue
-            if data_type == 'adspend_revenue' and not df.empty:
-                negative_cost = (df['cost'] < 0).sum()
-                if negative_cost > 0:
-                    data_issues.append(f"Negative cost values: {negative_cost} rows")
+        elif data_type == 'retention':
+            # Mistplay retention columns are already standardized
+            retention_cols = [col for col in df.columns if 'retention_rate' in col]
+            for col in retention_cols:
+                if col not in df.columns:
+                    df[col] = 0.0
                     
-            # Check for retention rates > 1
-            if data_type == 'retention' and not df.empty:
-                retention_cols = [col for col in df.columns if 'retention_rate' in col]
-                for col in retention_cols:
-                    invalid_retention = (df[col] > 1).sum()
-                    if invalid_retention > 0:
-                        data_issues.append(f"Invalid retention rates > 1 in {col}: {invalid_retention} rows")
-                        
-            if data_issues:
-                issues[data_type] = data_issues
+        elif data_type == 'roas':
+            # Mistplay ROAS columns are already standardized
+            roas_cols = [col for col in df.columns if 'roas_d' in col]
+            for col in roas_cols:
+                if col not in df.columns:
+                    df[col] = 0.0
+                    
+        elif data_type == 'level_progression':
+            # Handle Mistplay level progression data
+            if 'installs' in df.columns:
+                df['total_installs'] = df['installs']
                 
-        return issues
+        return df
+    
+    def load_platform_data(self, platform: str) -> Dict[str, pd.DataFrame]:
+        """Load all data for a specific platform"""
+        platform_data = {}
+        platform_path = os.path.join(self.data_dir, platform)
+        
+        if not os.path.exists(platform_path):
+            logger.warning(f"Platform directory not found: {platform_path}")
+            return platform_data
+            
+        # Get subdirectories (Android, iOS, etc.)
+        subdirs = [d for d in os.listdir(platform_path) 
+                  if os.path.isdir(os.path.join(platform_path, d))]
+        
+        for subdir in subdirs:
+            subdir_path = os.path.join(platform_path, subdir)
+            logger.info(f"Processing {platform}/{subdir}")
+            
+            # Look for CSV files
+            csv_files = [f for f in os.listdir(subdir_path) if f.endswith('.csv')]
+            
+            for csv_file in csv_files:
+                file_path = os.path.join(subdir_path, csv_file)
+                df = self._load_csv_file(file_path)
+                
+                if df is not None:
+                    # Determine data type from filename
+                    data_type = self._classify_data_type(csv_file)
+                    
+                    # Standardize data based on platform
+                    if platform == 'Unity Ads':
+                        df = self._standardize_unity_ads_data(df, data_type, platform)
+                    elif platform == 'Mistplay':
+                        df = self._standardize_mistplay_data(df, data_type, platform)
+                    
+                    # Add subdirectory info
+                    df['subdirectory'] = subdir
+                    
+                    # Store with key: platform_subdirectory_datatype
+                    key = f"{platform}_{subdir}_{data_type}"
+                    platform_data[key] = df
+                    
+        return platform_data
+    
+    def _classify_data_type(self, filename: str) -> str:
+        """Classify CSV file based on filename"""
+        filename_lower = filename.lower()
+        
+        if any(keyword in filename_lower for keyword in ['adspend', 'revenue', 'cost']):
+            return 'adspend_revenue'
+        elif 'retention' in filename_lower:
+            return 'retention'
+        elif 'roas' in filename_lower:
+            return 'roas'
+        elif any(keyword in filename_lower for keyword in ['level', 'progression']):
+            return 'level_progression'
+        else:
+            return 'unknown'
+    
+    def load_all_data(self) -> Dict[str, pd.DataFrame]:
+        """Load all data from all platforms"""
+        all_data = {}
+        
+        for platform in self.supported_platforms:
+            platform_data = self.load_platform_data(platform)
+            all_data.update(platform_data)
+            
+        logger.info(f"Loaded data from {len(all_data)} files")
+        return all_data
+    
+    def combine_platform_data(self, data_dict: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+        """Combine data from different platforms by type"""
+        combined_data = {
+            'adspend_revenue': [],
+            'retention': [],
+            'roas': [],
+            'level_progression': []
+        }
+        
+        for key, df in data_dict.items():
+            data_type = df['data_type'].iloc[0] if 'data_type' in df.columns else 'unknown'
+            if data_type in combined_data:
+                combined_data[data_type].append(df)
+        
+        # Concatenate dataframes for each type
+        for data_type, dfs in combined_data.items():
+            if dfs:
+                combined_data[data_type] = pd.concat(dfs, ignore_index=True)
+                logger.info(f"Combined {data_type}: {combined_data[data_type].shape}")
+            else:
+                combined_data[data_type] = pd.DataFrame()
+                
+        return combined_data
+    
+    def validate_data(self, combined_data: Dict[str, pd.DataFrame]) -> Dict[str, List[str]]:
+        """Validate combined data for completeness and quality"""
+        validation_results = {}
+        
+        for data_type, df in combined_data.items():
+            issues = []
+            
+            if df.empty:
+                issues.append(f"No data found for {data_type}")
+                continue
+                
+            # Check for required columns based on data type
+            if data_type == 'adspend_revenue':
+                required_cols = ['platform', 'spend', 'revenue']
+                for col in required_cols:
+                    if col not in df.columns:
+                        issues.append(f"Missing required column: {col}")
+                        
+            elif data_type == 'retention':
+                required_cols = ['platform', 'installs']
+                retention_cols = [col for col in df.columns if 'retention_rate' in col]
+                if not retention_cols:
+                    issues.append("No retention rate columns found")
+                    
+            elif data_type == 'roas':
+                required_cols = ['platform', 'installs']
+                roas_cols = [col for col in df.columns if 'roas_d' in col]
+                if not roas_cols:
+                    issues.append("No ROAS columns found")
+                    
+            elif data_type == 'level_progression':
+                required_cols = ['platform', 'installs']
+                level_cols = [col for col in df.columns if 'level' in col and 'events' in col]
+                if not level_cols:
+                    issues.append("No level progression columns found")
+            
+            # Check for missing values in key columns
+            if 'platform' in df.columns:
+                missing_platforms = df['platform'].isnull().sum()
+                if missing_platforms > 0:
+                    issues.append(f"Missing platform values: {missing_platforms}")
+                    
+            validation_results[data_type] = issues
+            
+        return validation_results
+    
+    def get_data_summary(self, combined_data: Dict[str, pd.DataFrame]) -> Dict[str, Dict]:
+        """Get summary statistics for all data types"""
+        summary = {}
+        
+        for data_type, df in combined_data.items():
+            if df.empty:
+                summary[data_type] = {"status": "No data available"}
+                continue
+                
+            summary[data_type] = {
+                "shape": df.shape,
+                "platforms": df['platform'].unique().tolist() if 'platform' in df.columns else [],
+                "columns": df.columns.tolist(),
+                "missing_values": df.isnull().sum().to_dict()
+            }
+            
+        return summary

@@ -7,17 +7,19 @@ from plotly.subplots import make_subplots
 import sys
 import os
 import re
+from datetime import datetime
 
-# Add src to path
+# Add src to path for imports
 sys.path.append('src')
 
+# Import GameLens modules
 from utils.data_loader import GameLensDataLoader
 from utils.feature_engineering import GameLensFeatureEngineer
 from utils.roas_forecaster import GameLensROASForecaster
 
 # Page configuration
 st.set_page_config(
-    page_title="GameLens AI - ROAS Forecasting",
+    page_title="GameLens AI - ROAS Forecasting Dashboard",
     page_icon="🎮",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -28,6 +30,7 @@ st.markdown("""
 <style>
     .main-header {
         font-size: 2.5rem;
+        font-weight: bold;
         color: #1f77b4;
         text-align: center;
         margin-bottom: 2rem;
@@ -38,473 +41,457 @@ st.markdown("""
         border-radius: 0.5rem;
         border-left: 4px solid #1f77b4;
     }
-    .recommendation-card {
-        background-color: #e8f4fd;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+    .success-metric {
+        border-left-color: #28a745;
+    }
+    .warning-metric {
+        border-left-color: #ffc107;
+    }
+    .danger-metric {
+        border-left-color: #dc3545;
     }
 </style>
 """, unsafe_allow_html=True)
 
-def main():
-    # Header
-    st.markdown('<h1 class="main-header">🎮 GameLens AI - ROAS Forecasting</h1>', unsafe_allow_html=True)
-    st.markdown("### AI-Powered Forecasting & Optimization for Mobile Games")
-    
-    # Sidebar
-    st.sidebar.title("Settings")
-    
-    # Target ROAS
-    target_roas = st.sidebar.slider(
-        "Target ROAS (%)", 
-        min_value=50, 
-        max_value=200, 
-        value=100, 
-        step=10
-    ) / 100
-    
-    # Target day
-    target_day = st.sidebar.selectbox(
-        "Target Day",
-        options=[15, 30, 45, 90],
-        index=1
-    )
-    
-    # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Overview", "🤖 Model Training", "🔮 Predictions", "💡 Recommendations"])
-    
-    with tab1:
-        show_data_overview()
-    
-    with tab2:
-        show_model_training(target_day)
-    
-    with tab3:
-        show_predictions(target_day)
-    
-    with tab4:
-        show_recommendations(target_day, target_roas)
+@st.cache_data
+def load_data():
+    """Load and cache data"""
+    try:
+        data_loader = GameLensDataLoader()
+        all_data = data_loader.load_all_data()
+        combined_data = data_loader.combine_platform_data(all_data)
+        return combined_data, data_loader
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None, None
 
-def show_data_overview():
+@st.cache_data
+def create_features(combined_data):
+    """Create and cache features"""
+    try:
+        feature_engineer = GameLensFeatureEngineer()
+        features_df = feature_engineer.create_features(combined_data)
+        return features_df, feature_engineer
+    except Exception as e:
+        st.error(f"Error creating features: {e}")
+        return None, None
+
+def show_data_overview(combined_data):
+    """Display data overview"""
     st.header("📊 Data Overview")
     
-    try:
-        # Load data
-        data_loader = GameLensDataLoader()
-        platform_data = data_loader.load_all_data()
-        combined_data = data_loader.combine_platforms(platform_data)
-        
-        # Data summary
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Platforms", len(platform_data))
-        
-        with col2:
-            total_countries = len(combined_data.get('retention', pd.DataFrame()))
-            st.metric("Countries", total_countries)
-        
-        with col3:
-            total_installs = combined_data.get('retention', pd.DataFrame())['installs'].sum()
-            st.metric("Total Installs", f"{total_installs:,}")
-        
-        with col4:
-            data_types = len(combined_data)
-            st.metric("Data Types", data_types)
-        
-        # Platform breakdown
-        st.subheader("Platform Breakdown")
-        platform_summary = []
-        for platform, data_types in platform_data.items():
-            for data_type, df in data_types.items():
-                platform_summary.append({
-                    'Platform': platform,
-                    'Data Type': data_type,
-                    'Countries': len(df),
-                    'Records': len(df)
-                })
-        
-        platform_df = pd.DataFrame(platform_summary)
-        st.dataframe(platform_df, use_container_width=True)
-        
-        # Data quality check
-        st.subheader("Data Quality Check")
-        validation_issues = data_loader.validate_data(combined_data)
-        
-        if validation_issues:
-            st.warning("⚠️ Data quality issues found:")
-            for data_type, issues in validation_issues.items():
-                st.write(f"**{data_type}:**")
-                for issue in issues:
-                    st.write(f"  - {issue}")
-        else:
-            st.success("✅ No data quality issues found")
-        
-        # Sample data visualization
-        if 'retention' in combined_data and not combined_data['retention'].empty:
-            st.subheader("Retention Data Sample")
-            
-            retention_df = combined_data['retention']
-            
-            # Retention heatmap
-            retention_cols = [col for col in retention_df.columns if 'retention_rate' in col]
-            if retention_cols:
-                heatmap_data = retention_df.set_index('country')[retention_cols]
-                
-                fig = px.imshow(
-                    heatmap_data,
-                    title="Retention Rates by Country and Day",
-                    labels=dict(x="Day", y="Country", color="Retention Rate"),
-                    aspect="auto"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-        
-        if 'roas' in combined_data and not combined_data['roas'].empty:
-            st.subheader("ROAS Data Sample")
-            
-            roas_df = combined_data['roas']
-            
-            # ROAS trends
-            roas_cols = [col for col in roas_df.columns if 'roas_d' in col]
-            if roas_cols:
-                # Select top countries by installs
-                top_countries = roas_df.nlargest(10, 'installs')['country'].tolist()
-                top_roas = roas_df[roas_df['country'].isin(top_countries)]
-                
-                # Prepare data for plotting
-                plot_data = []
-                for _, row in top_roas.iterrows():
-                    for col in roas_cols:
-                        m = re.search(r"(\d+)$", col)
-                        if not m:
-                            continue
-                        day = int(m.group(1))
-                        plot_data.append({
-                            'Country': row['country'],
-                            'Day': day,
-                            'ROAS': row[col]
-                        })
-                
-                plot_df = pd.DataFrame(plot_data)
-                
-                fig = px.line(
-                    plot_df,
-                    x='Day',
-                    y='ROAS',
-                    color='Country',
-                    title="ROAS Trends by Country",
-                    labels={'ROAS': 'ROAS (%)', 'Day': 'Day'}
-                )
-                st.plotly_chart(fig, use_container_width=True)
+    # Data summary
+    col1, col2, col3, col4 = st.columns(4)
     
-    except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        st.info("Please ensure the data files are in the correct location: Campaign Data/Unity Ads/")
+    total_files = sum(len(df) for df in combined_data.values() if not df.empty)
+    platforms = set()
+    for df in combined_data.values():
+        if not df.empty and 'platform' in df.columns:
+            platforms.update(df['platform'].unique())
+    
+    with col1:
+        st.metric("Total Data Files", len([df for df in combined_data.values() if not df.empty]))
+    with col2:
+        st.metric("Total Records", total_files)
+    with col3:
+        st.metric("Platforms", len(platforms))
+    with col4:
+        st.metric("Data Types", len([k for k, v in combined_data.items() if not v.empty]))
+    
+    # Platform distribution
+    st.subheader("Platform Distribution")
+    platform_data = []
+    for data_type, df in combined_data.items():
+        if not df.empty and 'platform' in df.columns:
+            for platform in df['platform'].unique():
+                platform_data.append({
+                    'Data Type': data_type.replace('_', ' ').title(),
+                    'Platform': platform,
+                    'Records': len(df[df['platform'] == platform])
+                })
+    
+    if platform_data:
+        platform_df = pd.DataFrame(platform_data)
+        fig = px.bar(platform_df, x='Platform', y='Records', color='Data Type',
+                    title="Data Distribution by Platform and Type")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Data quality metrics
+    st.subheader("Data Quality Metrics")
+    quality_metrics = []
+    for data_type, df in combined_data.items():
+        if not df.empty:
+            quality_metrics.append({
+                'Data Type': data_type.replace('_', ' ').title(),
+                'Records': len(df),
+                'Missing Values (%)': (df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100,
+                'Columns': len(df.columns)
+            })
+    
+    if quality_metrics:
+        quality_df = pd.DataFrame(quality_metrics)
+        st.dataframe(quality_df, use_container_width=True)
 
-def show_model_training(target_day):
+def show_feature_engineering(features_df, feature_engineer):
+    """Display feature engineering results"""
+    st.header("🔧 Feature Engineering")
+    
+    if features_df is None:
+        st.error("No features available. Please check data loading.")
+        return
+    
+    # Feature summary
+    feature_summary = feature_engineer.get_feature_summary(features_df)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Features", feature_summary['total_features'])
+    with col2:
+        st.metric("Numeric Features", feature_summary['numeric_features'])
+    with col3:
+        st.metric("Categorical Features", feature_summary['categorical_features'])
+    with col4:
+        st.metric("Total Samples", feature_summary['total_samples'])
+    
+    # Feature types breakdown
+    st.subheader("Feature Types Breakdown")
+    feature_types = feature_summary['feature_types']
+    
+    fig = px.pie(
+        values=list(feature_types.values()),
+        names=list(feature_types.keys()),
+        title="Feature Distribution by Type"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Feature correlation heatmap
+    st.subheader("Feature Correlation Heatmap")
+    numeric_features = features_df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(numeric_features) > 1:
+        correlation_matrix = features_df[numeric_features].corr()
+        
+        # Select top correlated features
+        top_features = correlation_matrix.abs().sum().sort_values(ascending=False).head(20).index
+        top_corr = correlation_matrix.loc[top_features, top_features]
+        
+        fig = px.imshow(
+            top_corr,
+            title="Top 20 Feature Correlations",
+            color_continuous_scale='RdBu_r',
+            aspect='auto'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+def show_model_training(features_df):
+    """Display model training interface"""
     st.header("🤖 Model Training")
     
-    try:
-        # Load and prepare data
-        with st.spinner("Loading and preparing data..."):
-            data_loader = GameLensDataLoader()
-            platform_data = data_loader.load_all_data()
-            combined_data = data_loader.combine_platforms(platform_data)
-            
-            feature_engineer = GameLensFeatureEngineer()
-            features_df = feature_engineer.create_cohort_features(combined_data)
-            X, y = feature_engineer.prepare_training_data(features_df, target_day=target_day)
+    if features_df is None:
+        st.error("No features available for training.")
+        return
+    
+    # Model configuration
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Target selection
+        roas_cols = [col for col in features_df.columns if 'roas_d' in col]
+        if roas_cols:
+            target_col = st.selectbox("Select Target ROAS Day", roas_cols)
+            target_day = int(re.search(r'd(\d+)', target_col).group(1))
+        else:
+            st.error("No ROAS columns found in data.")
+            return
         
-        st.success(f"✅ Data prepared: {X.shape[0]} samples, {X.shape[1]} features")
-        
-        # Model training
-        if st.button("🚀 Train Model", type="primary"):
-            with st.spinner("Training model..."):
-                forecaster = GameLensROASForecaster(target_day=target_day)
-                models = forecaster.train_model(X, y)
+        # Model parameters
+        st.subheader("Model Parameters")
+        n_estimators = st.slider("Number of Estimators", 50, 500, 100)
+        learning_rate = st.slider("Learning Rate", 0.01, 0.3, 0.05, 0.01)
+        max_depth = st.slider("Max Depth", 3, 10, 6)
+    
+    with col2:
+        # Training options
+        st.subheader("Training Options")
+        test_size = st.slider("Test Size", 0.1, 0.5, 0.2, 0.05)
+        cv_folds = st.slider("Cross-Validation Folds", 3, 10, 5)
+        random_state = st.number_input("Random State", value=42, min_value=0)
+    
+    # Prepare training data
+    if st.button("🚀 Train Model", type="primary"):
+        with st.spinner("Training model..."):
+            try:
+                # Remove rows with missing target
+                valid_data = features_df.dropna(subset=[target_col])
                 
-                # Save model
-                os.makedirs('models', exist_ok=True)
-                forecaster.save_model(f'models/roas_forecaster_d{target_day}.pkl')
+                if len(valid_data) == 0:
+                    st.error("No valid data for training after removing missing targets.")
+                    return
                 
-                st.success(f"✅ Model trained and saved for D{target_day} ROAS prediction")
+                # Prepare features and target
+                exclude_cols = ['platform', 'subdirectory', 'data_type', target_col]
+                feature_cols = [col for col in valid_data.columns if col not in exclude_cols]
                 
-                # Performance metrics
-                metrics = forecaster.evaluate_model(X, y)
+                X = valid_data[feature_cols].fillna(0)
+                y = valid_data[target_col]
                 
-                col1, col2, col3, col4 = st.columns(4)
+                # Initialize and train model
+                forecaster = GameLensROASForecaster()
                 
-                with col1:
-                    st.metric("MAPE", f"{metrics['mape']:.2%}")
-                
-                with col2:
-                    st.metric("RMSE", f"{metrics['rmse']:.4f}")
-                
-                with col3:
-                    st.metric("MAE", f"{metrics['mae']:.4f}")
-                
-                with col4:
-                    st.metric("R²", f"{metrics['r2']:.4f}")
-                
-                # Feature importance
-                st.subheader("Feature Importance")
-                importance_df = forecaster.get_feature_importance(top_n=15)
-                
-                fig = px.bar(
-                    importance_df,
-                    x='importance',
-                    y='feature',
-                    orientation='h',
-                    title=f"Top 15 Features for D{target_day} ROAS Prediction"
+                # Train model
+                models = forecaster.train_model(
+                    X, y, 
+                    quantiles=[0.1, 0.5, 0.9],
+                    n_estimators=n_estimators,
+                    learning_rate=learning_rate,
+                    max_depth=max_depth,
+                    random_state=random_state
                 )
-                st.plotly_chart(fig, use_container_width=True)
                 
-                # Cross-validation results
-                st.subheader("Cross-Validation Results")
-                cv_scores = forecaster.cross_validate(X, y)
+                # Store model in session state
+                st.session_state['forecaster'] = forecaster
+                st.session_state['X'] = X
+                st.session_state['y'] = y
+                st.session_state['feature_cols'] = feature_cols
+                st.session_state['target_col'] = target_col
+                st.session_state['target_day'] = target_day
                 
-                cv_df = pd.DataFrame({
-                    'Metric': ['MAPE', 'RMSE'],
-                    'Mean': [cv_scores['mape'].mean(), cv_scores['rmse'].mean()],
-                    'Std': [cv_scores['mape'].std(), cv_scores['rmse'].std()]
-                })
+                st.success(f"✅ Model trained successfully! Target: D{target_day} ROAS")
                 
-                st.dataframe(cv_df, use_container_width=True)
-    
-    except Exception as e:
-        st.error(f"Error in model training: {str(e)}")
+                # Show model info
+                feature_importance = forecaster.get_feature_importance()
+                if feature_importance:
+                    st.subheader("Top 10 Feature Importance")
+                    top_features = list(feature_importance.items())[:10]
+                    importance_df = pd.DataFrame(top_features, columns=['Feature', 'Importance'])
+                    st.dataframe(importance_df, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error training model: {e}")
 
-def show_predictions(target_day):
-    st.header("🔮 ROAS Predictions")
+def show_predictions():
+    """Display predictions and analysis"""
+    st.header("📈 Predictions & Analysis")
     
-    try:
-        # Load model
-        model_path = f'models/roas_forecaster_d{target_day}.pkl'
-        if not os.path.exists(model_path):
-            st.warning(f"Model not found: {model_path}")
-            st.info("Please train the model first in the 'Model Training' tab")
-            return
-        
-        forecaster = GameLensROASForecaster(target_day=target_day)
-        forecaster.load_model(model_path)
-        
-        # Load data for predictions
-        data_loader = GameLensDataLoader()
-        platform_data = data_loader.load_all_data()
-        combined_data = data_loader.combine_platforms(platform_data)
-        
-        feature_engineer = GameLensFeatureEngineer()
-        features_df = feature_engineer.create_cohort_features(combined_data)
-        X, y = feature_engineer.prepare_training_data(features_df, target_day=target_day)
-        
-        # Make predictions
-        predictions = forecaster.predict_with_confidence(X)
-        
-        # Combine with metadata
-        results_df = features_df[['country', 'platform', 'installs']].copy()
-        results_df = pd.concat([results_df, predictions], axis=1)
-        
-        # Display predictions
-        st.subheader(f"D{target_day} ROAS Predictions")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Mean Predicted ROAS", f"{results_df['roas_prediction'].mean():.3f}")
-        
-        with col2:
-            st.metric("Min Predicted ROAS", f"{results_df['roas_prediction'].min():.3f}")
-        
-        with col3:
-            st.metric("Max Predicted ROAS", f"{results_df['roas_prediction'].max():.3f}")
-        
-        # Predictions table
-        st.subheader("Detailed Predictions")
-        
-        display_cols = ['country', 'platform', 'installs', 'roas_prediction', 
-                       'roas_pred_q0.1', 'roas_pred_q0.9', 'confidence_interval_width']
-        
-        # Filter options
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            platform_filter = st.multiselect(
-                "Filter by Platform",
-                options=results_df['platform'].unique(),
-                default=results_df['platform'].unique()
-            )
-        
-        with col2:
-            min_installs = st.number_input("Min Installs", value=0, step=10)
-        
-        # Apply filters
-        filtered_df = results_df[
-            (results_df['platform'].isin(platform_filter)) &
-            (results_df['installs'] >= min_installs)
-        ]
-        
-        st.dataframe(filtered_df[display_cols].sort_values('roas_prediction', ascending=False), 
-                    use_container_width=True)
-        
-        # Visualization
-        st.subheader("Predictions Visualization")
-        
-        # Scatter plot of predictions vs confidence
-        fig = px.scatter(
-            filtered_df,
-            x='roas_prediction',
-            y='confidence_interval_width',
-            size='installs',
-            color='platform',
-            hover_data=['country'],
-            title=f"Predicted D{target_day} ROAS vs Confidence Interval Width"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Distribution of predictions
-        fig = px.histogram(
-            filtered_df,
-            x='roas_prediction',
-            color='platform',
-            title=f"Distribution of D{target_day} ROAS Predictions",
-            nbins=20
+    if 'forecaster' not in st.session_state:
+        st.warning("Please train a model first.")
+        return
+    
+    forecaster = st.session_state['forecaster']
+    X = st.session_state['X']
+    y = st.session_state['y']
+    target_day = st.session_state['target_day']
+    
+    # Make predictions
+    predictions = forecaster.predict(X)
+    
+    # Model performance metrics
+    metrics = forecaster.evaluate_model(y, predictions['median'])
+    
+    # Display metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("R² Score", f"{metrics['r2']:.4f}")
+    with col2:
+        st.metric("MAPE", f"{metrics['mape']:.4f}")
+    with col3:
+        st.metric("RMSE", f"{metrics['rmse']:.4f}")
+    with col4:
+        st.metric("MAE", f"{metrics['mae']:.4f}")
+    
+    # Visualizations
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Actual vs Predicted
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=y, y=predictions['median'],
+            mode='markers',
+            name='Predictions',
+            marker=dict(color='blue', opacity=0.6)
+        ))
+        fig.add_trace(go.Scatter(
+            x=[y.min(), y.max()], y=[y.min(), y.max()],
+            mode='lines',
+            name='Perfect Prediction',
+            line=dict(color='red', dash='dash')
+        ))
+        fig.update_layout(
+            title=f"Actual vs Predicted ROAS (D{target_day})",
+            xaxis_title="Actual ROAS",
+            yaxis_title="Predicted ROAS"
         )
         st.plotly_chart(fig, use_container_width=True)
     
-    except Exception as e:
-        st.error(f"Error loading predictions: {str(e)}")
+    with col2:
+        # Residuals
+        residuals = y - predictions['median']
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=predictions['median'], y=residuals,
+            mode='markers',
+            name='Residuals',
+            marker=dict(color='green', opacity=0.6)
+        ))
+        fig.add_hline(y=0, line_dash="dash", line_color="red")
+        fig.update_layout(
+            title="Residual Plot",
+            xaxis_title="Predicted ROAS",
+            yaxis_title="Residuals"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Confidence intervals
+    if 'lower' in predictions and 'upper' in predictions:
+        st.subheader("Prediction Confidence Intervals")
+        
+        # Sample of predictions with confidence intervals
+        sample_size = min(20, len(predictions['median']))
+        sample_indices = np.random.choice(len(predictions['median']), sample_size, replace=False)
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=list(range(sample_size)),
+            y=predictions['median'].iloc[sample_indices],
+            mode='markers',
+            name='Predicted ROAS',
+            marker=dict(color='blue', size=8)
+        ))
+        fig.add_trace(go.Scatter(
+            x=list(range(sample_size)),
+            y=predictions['upper'].iloc[sample_indices],
+            mode='lines',
+            name='Upper Bound',
+            line=dict(color='lightblue', width=0)
+        ))
+        fig.add_trace(go.Scatter(
+            x=list(range(sample_size)),
+            y=predictions['lower'].iloc[sample_indices],
+            mode='lines',
+            fill='tonexty',
+            name='Lower Bound',
+            line=dict(color='lightblue', width=0)
+        ))
+        fig.update_layout(
+            title=f"Sample Predictions with Confidence Intervals (D{target_day})",
+            xaxis_title="Sample Index",
+            yaxis_title="ROAS"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-def show_recommendations(target_day, target_roas):
-    st.header("💡 Actionable Recommendations")
+def show_recommendations():
+    """Display recommendations"""
+    st.header("💡 Recommendations")
     
-    try:
-        # Load model and data
-        model_path = f'models/roas_forecaster_d{target_day}.pkl'
-        if not os.path.exists(model_path):
-            st.warning(f"Model not found: {model_path}")
-            st.info("Please train the model first in the 'Model Training' tab")
-            return
-        
-        forecaster = GameLensROASForecaster(target_day=target_day)
-        forecaster.load_model(model_path)
-        
-        data_loader = GameLensDataLoader()
-        platform_data = data_loader.load_all_data()
-        combined_data = data_loader.combine_platforms(platform_data)
-        
-        feature_engineer = GameLensFeatureEngineer()
-        features_df = feature_engineer.create_cohort_features(combined_data)
-        X, y = feature_engineer.prepare_training_data(features_df, target_day=target_day)
-        
-        # Generate recommendations
-        recommendations = forecaster.generate_recommendations(X, y, target_roas=target_roas)
-        
-        # Combine with metadata
-        final_recommendations = pd.concat([
-            features_df[['country', 'platform', 'installs']], 
-            recommendations
-        ], axis=1)
-        
-        # Summary metrics
-        st.subheader(f"Recommendations Summary (Target ROAS: {target_roas:.1%})")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            scale_count = len(final_recommendations[
-                final_recommendations['recommendation'].str.contains('Scale')
-            ])
-            st.metric("Scale Opportunities", scale_count)
-        
-        with col2:
-            maintain_count = len(final_recommendations[
-                final_recommendations['recommendation'].str.contains('Maintain')
-            ])
-            st.metric("Maintain Spend", maintain_count)
-        
-        with col3:
-            reduce_count = len(final_recommendations[
-                final_recommendations['recommendation'].str.contains('Reduce|Cut')
-            ])
-            st.metric("Reduce/Cut Spend", reduce_count)
-        
-        with col4:
-            avg_gap = final_recommendations['roas_gap'].mean()
-            st.metric("Avg ROAS Gap", f"{avg_gap:.3f}")
-        
-        # Recommendations breakdown
-        st.subheader("Recommendations by Category")
-        
-        rec_summary = final_recommendations['recommendation'].value_counts()
-        
-        fig = px.pie(
-            values=rec_summary.values,
-            names=rec_summary.index,
-            title="Distribution of Recommendations"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Top scaling opportunities
-        st.subheader("🚀 Top Scaling Opportunities")
-        
-        top_opportunities = final_recommendations[
-            final_recommendations['recommendation'].str.contains('Scale')
-        ].sort_values('predicted_roas', ascending=False)
-        
-        if not top_opportunities.empty:
-            display_cols = ['country', 'platform', 'installs', 'predicted_roas', 
-                           'confidence_lower', 'confidence_upper', 'recommendation']
-            
-            for _, row in top_opportunities.head(10).iterrows():
-                with st.container():
-                    st.markdown(f"""
-                    <div class="recommendation-card">
-                        <h4>{row['country']} ({row['platform']})</h4>
-                        <p><strong>Predicted ROAS:</strong> {row['predicted_roas']:.3f} 
-                        (CI: {row['confidence_lower']:.3f} - {row['confidence_upper']:.3f})</p>
-                        <p><strong>Installs:</strong> {row['installs']:,}</p>
-                        <p><strong>Recommendation:</strong> {row['recommendation']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        # Risk areas
-        st.subheader("⚠️ Risk Areas (Reduce/Cut Spend)")
-        
-        risk_areas = final_recommendations[
-            final_recommendations['recommendation'].str.contains('Reduce|Cut')
-        ].sort_values('predicted_roas')
-        
-        if not risk_areas.empty:
-            display_cols = ['country', 'platform', 'installs', 'predicted_roas', 
-                           'confidence_lower', 'confidence_upper', 'recommendation']
-            
-            for _, row in risk_areas.head(10).iterrows():
-                with st.container():
-                    st.markdown(f"""
-                    <div class="recommendation-card">
-                        <h4>{row['country']} ({row['platform']})</h4>
-                        <p><strong>Predicted ROAS:</strong> {row['predicted_roas']:.3f} 
-                        (CI: {row['confidence_lower']:.3f} - {row['confidence_upper']:.3f})</p>
-                        <p><strong>Installs:</strong> {row['installs']:,}</p>
-                        <p><strong>Recommendation:</strong> {row['recommendation']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        # Export recommendations
-        st.subheader("📤 Export Results")
-        
-        if st.button("Download Recommendations CSV"):
-            csv = final_recommendations.to_csv(index=False)
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name=f"roas_recommendations_d{target_day}.csv",
-                mime="text/csv"
-            )
+    if 'forecaster' not in st.session_state:
+        st.warning("Please train a model first.")
+        return
     
-    except Exception as e:
-        st.error(f"Error generating recommendations: {str(e)}")
+    forecaster = st.session_state['forecaster']
+    X = st.session_state['X']
+    feature_cols = st.session_state['feature_cols']
+    target_day = st.session_state['target_day']
+    
+    # Recommendation parameters
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        target_roas = st.number_input("Target ROAS", value=0.5, min_value=0.0, step=0.1)
+        confidence_threshold = st.slider("Confidence Threshold", 0.5, 0.95, 0.8, 0.05)
+    
+    with col2:
+        num_recommendations = st.number_input("Number of Recommendations", value=10, min_value=1, max_value=50)
+    
+    if st.button("🎯 Generate Recommendations", type="primary"):
+        with st.spinner("Generating recommendations..."):
+            try:
+                # Make predictions
+                predictions = forecaster.predict(X)
+                
+                # Generate recommendations
+                recommendations = forecaster.generate_recommendations(
+                    X, predictions, target_roas, confidence_threshold
+                )
+                
+                # Display recommendations
+                st.subheader(f"Campaign Recommendations (Target ROAS: {target_roas})")
+                
+                for i, rec in enumerate(recommendations[:num_recommendations]):
+                    with st.expander(f"Campaign {i+1} - {rec['action']}"):
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("Predicted ROAS", f"{rec['predicted_roas']:.4f}")
+                        with col2:
+                            st.metric("Confidence", f"{rec['confidence']:.2f}")
+                        with col3:
+                            # Color code the action
+                            if rec['action'] == 'Scale':
+                                st.markdown('<div class="metric-card success-metric">Scale 📈</div>', unsafe_allow_html=True)
+                            elif rec['action'] == 'Maintain':
+                                st.markdown('<div class="metric-card warning-metric">Maintain ⚖️</div>', unsafe_allow_html=True)
+                            elif rec['action'] == 'Reduce':
+                                st.markdown('<div class="metric-card warning-metric">Reduce 📉</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<div class="metric-card danger-metric">Cut ❌</div>', unsafe_allow_html=True)
+                        
+                        if 'reasoning' in rec:
+                            st.write(f"**Reasoning:** {rec['reasoning']}")
+                
+                # Export recommendations
+                if st.button("📥 Export Recommendations"):
+                    rec_df = pd.DataFrame(recommendations)
+                    csv = rec_df.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name=f"roas_recommendations_d{target_day}.csv",
+                        mime="text/csv"
+                    )
+                
+            except Exception as e:
+                st.error(f"Error generating recommendations: {e}")
+
+def main():
+    """Main application"""
+    # Header
+    st.markdown('<h1 class="main-header">🎮 GameLens AI - ROAS Forecasting Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown("### Phase 1: Multi-Platform ROAS Forecasting with Unity Ads & Mistplay")
+    
+    # Sidebar
+    st.sidebar.title("Navigation")
+    page = st.sidebar.selectbox(
+        "Choose a page",
+        ["Data Overview", "Feature Engineering", "Model Training", "Predictions", "Recommendations"]
+    )
+    
+    # Load data
+    combined_data, data_loader = load_data()
+    
+    if combined_data is None:
+        st.error("Failed to load data. Please check your data directory.")
+        return
+    
+    # Create features
+    features_df, feature_engineer = create_features(combined_data)
+    
+    # Page routing
+    if page == "Data Overview":
+        show_data_overview(combined_data)
+    elif page == "Feature Engineering":
+        show_feature_engineering(features_df, feature_engineer)
+    elif page == "Model Training":
+        show_model_training(features_df)
+    elif page == "Predictions":
+        show_predictions()
+    elif page == "Recommendations":
+        show_recommendations()
+    
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**GameLens AI Phase 1**")
+    st.sidebar.markdown("Multi-platform ROAS forecasting")
+    st.sidebar.markdown("Unity Ads + Mistplay support")
 
 if __name__ == "__main__":
     main()
