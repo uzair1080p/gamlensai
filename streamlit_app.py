@@ -8,7 +8,6 @@ import sys
 import os
 import re
 from datetime import datetime
-import streamlit_authenticator as stauth
 
 # Add src to path for imports
 sys.path.append('src')
@@ -26,115 +25,45 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-def _safe_login(authenticator):
-    """Attempt login with several signature variants for compatibility."""
-    # Try new API first: keyword only
-    try:
-        return authenticator.login('Login', location='main')
-    except TypeError:
-        pass
-    except Exception:
-        pass
-    # Try positional (old)
-    try:
-        return authenticator.login('Login', 'main')
-    except TypeError:
-        pass
-    except Exception:
-        pass
-    # Try single positional
-    try:
-        return authenticator.login('Login')
-    except Exception:
-        pass
-    # Try no args
-    return authenticator.login()
+# Simple authentication
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
 
-def _safe_logout(authenticator):
-    """Attempt logout with several signature variants for compatibility."""
-    try:
-        authenticator.logout('Logout', location='sidebar')
-        return
-    except TypeError:
-        pass
-    except Exception:
-        pass
-    try:
-        authenticator.logout('Logout', 'sidebar')
-        return
-    except Exception:
-        pass
-    try:
-        authenticator.logout('Logout')
-    except Exception:
-        pass
+# Demo credentials
+DEMO_USERNAME = "demo"
+DEMO_PASSWORD = "demo123"
 
-# Authentication setup (demo credentials)
-# NOTE: For production, store hashed passwords and secrets in Streamlit secrets.
-if 'auth_initialized' not in st.session_state:
-    st.session_state['auth_initialized'] = True
-    display_name = "Demo User"
-    username = "demo"
-    # Generate a hashed password for 'demo123' compatible with multiple package versions
-    hashed_password = None
-    try:
-        hashed_password = stauth.Hasher(["demo123"]).generate()[0]
-    except Exception:
-        try:
-            hashed_password = stauth.Hasher().hash("demo123")
-        except Exception:
-            maybe_list = stauth.Hasher().hash(["demo123"])  # type: ignore
-            hashed_password = maybe_list[0] if isinstance(maybe_list, list) else maybe_list
+# Authentication UI
+if not st.session_state['authenticated']:
+    st.markdown('<h1 class="main-header">🎮 GameLens AI - ROAS Forecasting Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown("### Phase 1: Multi-Platform ROAS Forecasting with Unity Ads & Mistplay")
+    
+    st.markdown("---")
+    st.subheader("🔐 Login Required")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        username = st.text_input("Username", value="demo")
+    with col2:
+        password = st.text_input("Password", type="password", value="demo123")
+    
+    if st.button("Login", type="primary"):
+        if username == DEMO_USERNAME and password == DEMO_PASSWORD:
+            st.session_state['authenticated'] = True
+            st.success("Login successful!")
+            st.rerun()
+        else:
+            st.error("Invalid username or password")
+    
+    st.info("Demo credentials: Username: demo, Password: demo123")
+    st.stop()
 
-    # Prefer new credentials dict format
-    credentials_new = {
-        'usernames': {
-            username: {
-                'name': display_name,
-                'password': hashed_password
-            }
-        }
-    }
-
-    # Legacy arrays for older versions
-    names_legacy = [display_name]
-    usernames_legacy = [username]
-    passwords_legacy = [hashed_password]
-
-    # Build authenticator with compatibility
-    try:
-        # New API
-        authenticator = stauth.Authenticate(
-            credentials_new,
-            'gamlens_auth',
-            'gamlens_cookie_key',
-            7
-        )
-        st.session_state['auth_api'] = 'new'
-        st.session_state['authenticator'] = authenticator
-    except Exception:
-        # Legacy API
-        authenticator = stauth.Authenticate(
-            names_legacy,
-            usernames_legacy,
-            passwords_legacy,
-            'gamlens_auth',
-            'gamlens_cookie_key',
-            7
-        )
-        st.session_state['auth_api'] = 'legacy'
-        st.session_state['authenticator'] = authenticator
-
-# Use authenticator
-authenticator = st.session_state['authenticator']
-name, authentication_status, username = _safe_login(authenticator)
-
-if authentication_status is False:
-    st.error('Username/password is incorrect')
-elif authentication_status is None:
-    st.warning('Please enter your username and password')
+# Main application (only runs if authenticated)
 else:
-    _safe_logout(authenticator)
+    # Logout button in sidebar
+    if st.sidebar.button("Logout"):
+        st.session_state['authenticated'] = False
+        st.rerun()
 
     # Custom CSS
     st.markdown("""
