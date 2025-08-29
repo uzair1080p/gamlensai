@@ -26,6 +26,49 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+def _safe_login(authenticator):
+    """Attempt login with several signature variants for compatibility."""
+    # Try new API first: keyword only
+    try:
+        return authenticator.login('Login', location='main')
+    except TypeError:
+        pass
+    except Exception:
+        pass
+    # Try positional (old)
+    try:
+        return authenticator.login('Login', 'main')
+    except TypeError:
+        pass
+    except Exception:
+        pass
+    # Try single positional
+    try:
+        return authenticator.login('Login')
+    except Exception:
+        pass
+    # Try no args
+    return authenticator.login()
+
+def _safe_logout(authenticator):
+    """Attempt logout with several signature variants for compatibility."""
+    try:
+        authenticator.logout('Logout', location='sidebar')
+        return
+    except TypeError:
+        pass
+    except Exception:
+        pass
+    try:
+        authenticator.logout('Logout', 'sidebar')
+        return
+    except Exception:
+        pass
+    try:
+        authenticator.logout('Logout')
+    except Exception:
+        pass
+
 # Authentication setup (demo credentials)
 # NOTE: For production, store hashed passwords and secrets in Streamlit secrets.
 if 'auth_initialized' not in st.session_state:
@@ -59,9 +102,8 @@ if 'auth_initialized' not in st.session_state:
     passwords_legacy = [hashed_password]
 
     # Build authenticator with compatibility
-    authenticator = None
     try:
-        # New API: Authenticate(credentials, cookie_name, key, expiry_days)
+        # New API
         authenticator = stauth.Authenticate(
             credentials_new,
             'gamlens_auth',
@@ -69,8 +111,9 @@ if 'auth_initialized' not in st.session_state:
             7
         )
         st.session_state['auth_api'] = 'new'
+        st.session_state['authenticator'] = authenticator
     except Exception:
-        # Legacy API: Authenticate(names, usernames, passwords, cookie_name, key, expiry_days)
+        # Legacy API
         authenticator = stauth.Authenticate(
             names_legacy,
             usernames_legacy,
@@ -80,27 +123,18 @@ if 'auth_initialized' not in st.session_state:
             7
         )
         st.session_state['auth_api'] = 'legacy'
+        st.session_state['authenticator'] = authenticator
 
 # Use authenticator
-auth_api = st.session_state.get('auth_api', 'new')
-if auth_api == 'new':
-    name, authentication_status, username = authenticator.login('Login', location='main')
-else:
-    # some older versions accept ('Login','main') as positional
-    try:
-        name, authentication_status, username = authenticator.login('Login', 'main')
-    except Exception:
-        name, authentication_status, username = authenticator.login('Login')
+authenticator = st.session_state['authenticator']
+name, authentication_status, username = _safe_login(authenticator)
 
 if authentication_status is False:
     st.error('Username/password is incorrect')
 elif authentication_status is None:
     st.warning('Please enter your username and password')
 else:
-    try:
-        authenticator.logout('Logout', location='sidebar')
-    except Exception:
-        authenticator.logout('Logout', 'sidebar')
+    _safe_logout(authenticator)
 
     # Custom CSS
     st.markdown("""
