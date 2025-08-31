@@ -322,10 +322,10 @@ else:
         target_day = st.session_state['target_day']
         
         # Make predictions
-        predictions = forecaster.predict(X)
+        predictions = forecaster.predict_with_confidence(X)
         
         # Model performance metrics
-        metrics = forecaster.evaluate_model(y, predictions['median'])
+        metrics = forecaster.evaluate_model(X, y)
         
         # Display metrics
         col1, col2, col3, col4 = st.columns(4)
@@ -338,6 +338,10 @@ else:
         with col4:
             st.metric("MAE", f"{metrics['mae']:.4f}")
         
+        # Show confidence interval coverage if available
+        if 'confidence_coverage' in metrics:
+            st.metric("Confidence Coverage", f"{metrics['confidence_coverage']:.4f}")
+        
         # Visualizations
         col1, col2 = st.columns(2)
         
@@ -345,7 +349,7 @@ else:
             # Actual vs Predicted
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=y, y=predictions['median'],
+                x=y, y=predictions['roas_prediction'],
                 mode='markers',
                 name='Predictions',
                 marker=dict(color='blue', opacity=0.6)
@@ -365,45 +369,50 @@ else:
         
         with col2:
             # Residuals
-            residuals = y - predictions['median']
+            residuals = y - predictions['roas_prediction']
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=predictions['median'], y=residuals,
+                x=predictions['roas_prediction'], y=residuals,
                 mode='markers',
                 name='Residuals',
                 marker=dict(color='green', opacity=0.6)
             ))
+            fig.update_layout(
+                title=f"Residuals Plot",
+                xaxis_title="Predicted ROAS",
+                yaxis_title="Residuals"
+            )
             st.plotly_chart(fig, use_container_width=True)
         
         # Confidence intervals
-        if 'lower' in predictions and 'upper' in predictions:
+        if 'roas_pred_q0.1' in predictions.columns and 'roas_pred_q0.9' in predictions.columns:
             st.subheader("Prediction Confidence Intervals")
             
             # Sample of predictions with confidence intervals
-            sample_size = min(20, len(predictions['median']))
-            sample_indices = np.random.choice(len(predictions['median']), sample_size, replace=False)
+            sample_size = min(20, len(predictions['roas_prediction']))
+            sample_indices = np.random.choice(len(predictions['roas_prediction']), sample_size, replace=False)
             
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=list(range(sample_size)),
-                y=predictions['median'].iloc[sample_indices],
+                y=predictions['roas_prediction'].iloc[sample_indices],
                 mode='markers',
                 name='Predicted ROAS',
                 marker=dict(color='blue', size=8)
             ))
             fig.add_trace(go.Scatter(
                 x=list(range(sample_size)),
-                y=predictions['upper'].iloc[sample_indices],
+                y=predictions['roas_pred_q0.9'].iloc[sample_indices],
                 mode='lines',
-                name='Upper Bound',
+                name='Upper Bound (90%)',
                 line=dict(color='lightblue', width=0)
             ))
             fig.add_trace(go.Scatter(
                 x=list(range(sample_size)),
-                y=predictions['lower'].iloc[sample_indices],
+                y=predictions['roas_pred_q0.1'].iloc[sample_indices],
                 mode='lines',
                 fill='tonexty',
-                name='Lower Bound',
+                name='Lower Bound (10%)',
                 line=dict(color='lightblue', width=0)
             ))
             fig.update_layout(
@@ -440,37 +449,45 @@ else:
             with st.spinner("Generating recommendations..."):
                 try:
                     # Make predictions
-                    predictions = forecaster.predict(X)
+                    predictions = forecaster.predict_with_confidence(X)
                     
                     # Generate recommendations
                     recommendations = forecaster.generate_recommendations(
-                        X, predictions, target_roas, confidence_threshold
+                        X, y, target_roas
                     )
                     
                     # Display recommendations
                     st.subheader(f"Campaign Recommendations (Target ROAS: {target_roas})")
                     
-                    for i, rec in enumerate(recommendations[:num_recommendations]):
-                        with st.expander(f"Campaign {i+1} - {rec['action']}"):
+                    # Convert to list of dictionaries for easier iteration
+                    rec_list = recommendations.head(num_recommendations).to_dict('records')
+                    
+                    for i, rec in enumerate(rec_list):
+                        with st.expander(f"Campaign {i+1} - {rec['recommendation']}"):
                             col1, col2, col3 = st.columns(3)
                             
                             with col1:
                                 st.metric("Predicted ROAS", f"{rec['predicted_roas']:.4f}")
                             with col2:
-                                st.metric("Confidence", f"{rec['confidence']:.2f}")
+                                st.metric("Confidence Level", rec['confidence_level'])
                             with col3:
-                                # Color code the action
-                                if rec['action'] == 'Scale':
+                                # Color code the recommendation
+                                if 'Scale' in rec['recommendation']:
                                     st.markdown('<div class="metric-card success-metric">Scale 📈</div>', unsafe_allow_html=True)
-                                elif rec['action'] == 'Maintain':
+                                elif 'Maintain' in rec['recommendation']:
                                     st.markdown('<div class="metric-card warning-metric">Maintain ⚖️</div>', unsafe_allow_html=True)
-                                elif rec['action'] == 'Reduce':
+                                elif 'Reduce' in rec['recommendation']:
                                     st.markdown('<div class="metric-card warning-metric">Reduce 📉</div>', unsafe_allow_html=True)
                                 else:
                                     st.markdown('<div class="metric-card danger-metric">Cut ❌</div>', unsafe_allow_html=True)
                             
-                            if 'reasoning' in rec:
-                                st.write(f"**Reasoning:** {rec['reasoning']}")
+                            # Show confidence interval if available
+                            if 'confidence_lower' in rec and 'confidence_upper' in rec:
+                                st.write(f"**Confidence Interval:** [{rec['confidence_lower']:.4f}, {rec['confidence_upper']:.4f}]")
+                            
+                            # Show ROAS gap
+                            if 'roas_gap' in rec:
+                                st.write(f"**ROAS Gap:** {rec['roas_gap']:.4f}")
                     
                     # Export recommendations
                     if st.button("📥 Export Recommendations"):

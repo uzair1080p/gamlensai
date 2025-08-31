@@ -19,7 +19,11 @@ class GameLensROASForecaster:
         self.performance_metrics = {}
         
     def train_model(self, X: pd.DataFrame, y: pd.Series, 
-                   quantiles: List[float] = [0.1, 0.5, 0.9]) -> Dict[str, lgb.LGBMRegressor]:
+                   quantiles: List[float] = [0.1, 0.5, 0.9],
+                   n_estimators: int = 100,
+                   learning_rate: float = 0.05,
+                   max_depth: int = 6,
+                   random_state: int = 42) -> Dict[str, lgb.LGBMRegressor]:
         """Train LightGBM models for different quantiles to get confidence intervals"""
         
         models = {}
@@ -34,12 +38,14 @@ class GameLensROASForecaster:
                 'metric': 'quantile',
                 'boosting_type': 'gbdt',
                 'num_leaves': 31,
-                'learning_rate': 0.05,
+                'learning_rate': learning_rate,
+                'n_estimators': n_estimators,
+                'max_depth': max_depth,
                 'feature_fraction': 0.9,
                 'bagging_fraction': 0.8,
                 'bagging_freq': 5,
                 'verbose': -1,
-                'random_state': 42
+                'random_state': random_state
             }
             
             # Train model
