@@ -8,6 +8,7 @@ import sys
 import os
 import re
 from datetime import datetime
+from typing import Optional
 
 # Add src to path for imports
 sys.path.append('src')
@@ -432,6 +433,7 @@ else:
         
         forecaster = st.session_state['forecaster']
         X = st.session_state['X']
+        y = st.session_state.get('y')
         feature_cols = st.session_state['feature_cols']
         target_day = st.session_state['target_day']
         
@@ -503,6 +505,78 @@ else:
                 except Exception as e:
                     st.error(f"Error generating recommendations: {e}")
 
+    def _read_faq_content() -> Optional[str]:
+        """Read FAQ content from common locations and formats.
+
+        Supports:
+        - FAQ.docx (preferred)
+        - faq.md
+        - faq.txt
+        Returns markdown string or None if not found.
+        """
+        # Try DOCX first
+        possible_paths = [
+            "FAQ.docx", "faq.docx", "docs/FAQ.docx", "docs/faq.docx",
+            "faq.md", "FAQ.md", "docs/faq.md", "docs/FAQ.md",
+            "faq.txt", "FAQ.txt", "docs/faq.txt", "docs/FAQ.txt",
+        ]
+
+        # Resolve path that exists
+        selected_path = None
+        for p in possible_paths:
+            if os.path.exists(p):
+                selected_path = p
+                break
+
+        if not selected_path:
+            return None
+
+        # If markdown or text -> simple read
+        if selected_path.lower().endswith((".md", ".txt")):
+            try:
+                with open(selected_path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                return None
+
+        # If DOCX -> convert to simple markdown
+        try:
+            import docx  # type: ignore
+        except Exception:
+            # Dependency not available at runtime
+            return "Install dependency missing to render FAQ.docx. Please run `pip install python-docx` and restart."
+
+        try:
+            document = docx.Document(selected_path)
+            lines = []
+            for para in document.paragraphs:
+                text = para.text.strip()
+                if not text:
+                    continue
+                style = (para.style.name or "").lower()
+                if "heading" in style:
+                    # Extract heading level digits in style name
+                    level_match = re.search(r"(\d+)", para.style.name or "")
+                    level = int(level_match.group(1)) if level_match else 2
+                    level = max(2, min(4, level))
+                    lines.append("#" * level + " " + text)
+                elif "list" in style:
+                    lines.append(f"- {text}")
+                else:
+                    lines.append(text)
+            return "\n\n".join(lines)
+        except Exception:
+            return None
+
+    def show_faq():
+        """Render FAQ page from the project's FAQ file."""
+        st.header("❓ Frequently Asked Questions")
+        content = _read_faq_content()
+        if not content:
+            st.warning("FAQ file not found. Add `FAQ.docx`, `faq.md`, or `faq.txt` to the project root or `docs/`.")
+            return
+        st.markdown(content)
+
     def main():
         """Main application"""
         # Header
@@ -513,7 +587,7 @@ else:
         st.sidebar.title("Navigation")
         page = st.sidebar.selectbox(
             "Choose a page",
-            ["Data Overview", "Feature Engineering", "Model Training", "Predictions", "Recommendations"]
+            ["Data Overview", "Feature Engineering", "Model Training", "Predictions", "Recommendations", "FAQ"]
         )
         
         # Load data
@@ -537,6 +611,8 @@ else:
             show_predictions()
         elif page == "Recommendations":
             show_recommendations()
+        elif page == "FAQ":
+            show_faq()
         
         # Footer
         st.sidebar.markdown("---")
