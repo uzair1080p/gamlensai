@@ -569,13 +569,173 @@ else:
             return None
 
     def show_faq():
-        """Render FAQ page from the project's FAQ file."""
+        """Render FAQ page and answer questions using data and models."""
         st.header("❓ Frequently Asked Questions")
+
+        # Pull objects from session if available
+        combined_data = st.session_state.get('combined_data')
+        features_df = st.session_state.get('features_df')
+        forecaster = st.session_state.get('forecaster')
+        X = st.session_state.get('X')
+        y = st.session_state.get('y')
+        target_col = st.session_state.get('target_col')
+        target_day = st.session_state.get('target_day')
+
+        # Helper: compute KPIs used across answers
+        def compute_kpis():
+            kpis = {}
+            try:
+                if combined_data and isinstance(combined_data, dict):
+                    # Records per platform
+                    platform_counts = {}
+                    for df in combined_data.values():
+                        if df is not None and not df.empty and 'platform' in df.columns:
+                            counts = df['platform'].value_counts().to_dict()
+                            for k, v in counts.items():
+                                platform_counts[k] = platform_counts.get(k, 0) + int(v)
+                    kpis['platform_counts'] = platform_counts
+
+                # Model metrics
+                if forecaster is not None and X is not None and y is not None:
+                    try:
+                        metrics = forecaster.evaluate_model(X, y)
+                    except Exception:
+                        metrics = getattr(forecaster, 'performance_metrics', {}) or {}
+                    kpis['metrics'] = metrics
+
+                    # Predictions summary
+                    try:
+                        preds = forecaster.predict_with_confidence(X)
+                        kpis['pred_summary'] = {
+                            'mean': float(preds['roas_prediction'].mean()),
+                            'p10': float(preds['roas_prediction'].quantile(0.1)),
+                            'p50': float(preds['roas_prediction'].quantile(0.5)),
+                            'p90': float(preds['roas_prediction'].quantile(0.9)),
+                        }
+                    except Exception:
+                        kpis['pred_summary'] = {}
+
+                    # Feature importance
+                    try:
+                        fi = forecaster.get_feature_importance(top_n=10)
+                        kpis['top_features'] = fi.to_dict('records')
+                    except Exception:
+                        kpis['top_features'] = []
+
+                    # Best platform by actual target if available
+                    if features_df is not None and target_col in features_df.columns:
+                        if 'platform' in features_df.columns:
+                            by_plat = features_df[[target_col, 'platform']].dropna()
+                            if not by_plat.empty:
+                                agg = by_plat.groupby('platform')[target_col].mean().sort_values(ascending=False)
+                                kpis['best_platform'] = {
+                                    'name': str(agg.index[0]),
+                                    'value': float(agg.iloc[0])
+                                }
+                return kpis
+            except Exception:
+                return {}
+
+        # Generate recommendation samples for answers
+        def compute_recommendations(target_roas: float = 1.0, limit: int = 5):
+            if forecaster is None or X is None:
+                return []
+            try:
+                recs = forecaster.generate_recommendations(X, y, target_roas)
+                return recs.head(limit).to_dict('records')
+            except Exception:
+                return []
+
+        kpis = compute_kpis()
+
+        # Parse questions from FAQ content (docx/md/txt). Default questions if none found.
         content = _read_faq_content()
-        if not content:
-            st.warning("FAQ file not found. Add `FAQ.docx`, `faq.md`, or `faq.txt` to the project root or `docs/`.")
-            return
-        st.markdown(content)
+        questions = []
+        if content:
+            for raw in content.splitlines():
+                line = raw.strip(" -\t")
+                if not line:
+                    continue
+                # Treat lines starting with Q or ending with ? as questions
+                if line.lower().startswith('q') or line.endswith('?'):
+                    # Remove leading "Q:" if present
+                    line = re.sub(r'^q\s*[:\-]\s*', '', line, flags=re.I)
+                    questions.append(line)
+
+        if not questions:
+            questions = [
+                "What is the model performance?",
+                "Which platform performs best?",
+                "What are the top drivers of ROAS?",
+                "What ROAS should we expect?",
+                "Which campaigns should we scale or cut?",
+            ]
+
+        # Simple intent-based answering with keyword routing
+        def answer_question(q: str) -> str:
+            ql = q.lower()
+            if any(k in ql for k in ["perform", "metric", "accuracy", "r2", "mape", "rmse", "mae"]):
+                m = kpis.get('metrics', {})
+                if not m:
+                    return "Model is not trained yet. Train a model in the Model Training tab."
+                parts = []
+                if 'r2' in m:
+                    parts.append(f"R²: {m['r2']:.3f}")
+                if 'mape' in m:
+                    parts.append(f"MAPE: {m['mape']:.3f}")
+                if 'rmse' in m:
+                    parts.append(f"RMSE: {m['rmse']:.3f}")
+                if 'mae' in m:
+                    parts.append(f"MAE: {m['mae']:.3f}")
+                if 'confidence_coverage' in m:
+                    parts.append(f"CI coverage: {m['confidence_coverage']:.3f}")
+                label = f" for D{target_day}" if target_day else ""
+                return "Model performance" + label + ": " + ", ".join(parts)
+
+            if any(k in ql for k in ["best platform", "which platform", "platform perform"]):
+                bp = kpis.get('best_platform')
+                if not bp:
+                    return "Insufficient data to identify the best platform."
+                label = f" (avg {target_col})" if target_col else ""
+                return f"Best platform is {bp['name']}{label}: {bp['value']:.3f}"
+
+            if any(k in ql for k in ["driver", "feature", "important"]):
+                tops = kpis.get('top_features', [])
+                if not tops:
+                    return "Feature importance not available. Train a model first."
+                top_list = ", ".join(t['feature'] for t in tops[:5])
+                return f"Top drivers of ROAS include: {top_list}."
+
+            if any(k in ql for k in ["expect roas", "forecast", "prediction", "expected roas"]):
+                ps = kpis.get('pred_summary', {})
+                if not ps:
+                    return "No predictions available yet. Train a model first."
+                label = f"D{target_day} " if target_day else ""
+                return (f"Expected {label}ROAS — mean: {ps.get('mean', float('nan')):.3f}, "
+                        f"p50: {ps.get('p50', float('nan')):.3f}, "
+                        f"range ~ p10 {ps.get('p10', float('nan')):.3f} to p90 {ps.get('p90', float('nan')):.3f}.")
+
+            if any(k in ql for k in ["scale", "cut", "reduce", "maintain", "budget"]):
+                recs = compute_recommendations(target_roas=1.0, limit=5)
+                if not recs:
+                    return "Recommendations unavailable. Train a model to generate recommendations."
+                lines = []
+                for r in recs:
+                    lines.append(f"- {r['recommendation']} (pred ROAS {r['predicted_roas']:.3f}, CI [{r.get('confidence_lower', float('nan')):.3f}, {r.get('confidence_upper', float('nan')):.3f}])")
+                return "\n".join(lines)
+
+            if any(k in ql for k in ["data", "coverage", "how much", "volume"]):
+                pc = kpis.get('platform_counts', {})
+                if not pc:
+                    return "No platform distribution available."
+                return "Data records by platform: " + ", ".join([f"{k}: {v}" for k, v in pc.items()])
+
+            return "This question is currently not supported by the automated Q&A."
+
+        # Render Q&A
+        for q in questions:
+            st.subheader(q)
+            st.write(answer_question(q))
 
     def main():
         """Main application"""
