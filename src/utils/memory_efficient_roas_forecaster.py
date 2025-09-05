@@ -31,14 +31,14 @@ except Exception as e:
 logger = logging.getLogger(__name__)
 
 class MemoryEfficientROASForecaster:
-    """Memory-efficient ROAS forecasting model for GameLens AI - optimized for low-RAM servers"""
+    """ROAS forecasting model for GameLens AI - optimized for 32GB RAM servers with quality focus"""
     
     def __init__(self, target_day: int = 30):
         self.target_day = target_day
         self.models = {}
         self.feature_importance = {}
         self.performance_metrics = {}
-        self.training_chunk_size = 500  # Balanced chunk size for 4GB RAM
+        self.training_chunk_size = 2000  # Larger chunks for 32GB RAM
         
     def train_model(self, X: pd.DataFrame, y: pd.Series, 
                    quantiles: List[float] = [0.1, 0.5, 0.9],
@@ -56,18 +56,14 @@ class MemoryEfficientROASForecaster:
             logger.warning(f"Removing object columns for training: {list(object_cols)}")
             X = X_numeric
         
-        # Use standard training for small datasets, chunked for larger ones
-        if len(X) <= 1000:
-            logger.info(f"Small dataset ({len(X)} samples). Using standard training.")
+        # Use standard training for most datasets with 32GB RAM
+        if len(X) <= 10000:
+            logger.info(f"Dataset ({len(X)} samples). Using standard training with 32GB RAM.")
             return self._train_model_standard(X, y, quantiles, n_estimators, learning_rate, max_depth, random_state)
         else:
-            # Try chunked training first, fallback to simple models if it fails
-            try:
-                logger.info(f"Large dataset ({len(X)} samples). Using chunked training (chunk size: {self.training_chunk_size})")
-                return self._train_model_chunked(X, y, quantiles, n_estimators, learning_rate, max_depth, random_state)
-            except MemoryError:
-                logger.warning("Chunked training failed due to memory. Using simple fallback models.")
-                return self._train_simple_fallback(X, y, quantiles, random_state)
+            # Only use chunked training for very large datasets
+            logger.info(f"Very large dataset ({len(X)} samples). Using chunked training (chunk size: {self.training_chunk_size})")
+            return self._train_model_chunked(X, y, quantiles, n_estimators, learning_rate, max_depth, random_state)
     
     def _train_model_standard(self, X: pd.DataFrame, y: pd.Series, 
                              quantiles: List[float], n_estimators: int,
@@ -160,49 +156,40 @@ class MemoryEfficientROASForecaster:
             for q in quantiles:
                 logger.info(f"Training LightGBM model for quantile {q} using chunked data")
                 
-                # Balanced parameters for 4GB RAM - more reasonable but still memory-efficient
+                # Optimized parameters for 32GB RAM - focus on model quality
                 params = {
                     'objective': 'quantile',
                     'alpha': q,
                     'metric': 'quantile',
                     'boosting_type': 'gbdt',
-                    'num_leaves': 15,  # Reasonable tree size
-                    'learning_rate': learning_rate * 1.2,  # Slightly higher learning rate
-                    'n_estimators': min(n_estimators // 2, 50),  # Moderate number of estimators
-                    'max_depth': 4,  # Reasonable depth
-                    'feature_fraction': 0.8,  # Use most features
-                    'bagging_fraction': 0.7,  # Use most data
-                    'bagging_freq': 3,
+                    'num_leaves': 31,  # Full tree size
+                    'learning_rate': learning_rate,  # Use original learning rate
+                    'n_estimators': n_estimators,  # Use full number of estimators
+                    'max_depth': max_depth,  # Use full depth
+                    'feature_fraction': 0.9,  # Use most features
+                    'bagging_fraction': 0.8,  # Use most data
+                    'bagging_freq': 5,
                     'verbose': -1,
                     'random_state': random_state,
                     'force_col_wise': True,
                     'min_data_in_leaf': 20,
-                    'min_gain_to_split': 0.05,  # Allow some learning
+                    'min_gain_to_split': 0.0,  # Allow full learning
                 }
                 
                 model = lgb.LGBMRegressor(**params)
                 
-                # Train on chunks with aggressive memory management
+                # Train on chunks with minimal memory management for 32GB RAM
                 for i in range(0, len(X), self.training_chunk_size):
                     end_idx = min(i + self.training_chunk_size, len(X))
-                    X_chunk = X.iloc[i:end_idx].copy()  # Explicit copy
-                    y_chunk = y.iloc[i:end_idx].copy()  # Explicit copy
+                    X_chunk = X.iloc[i:end_idx]
+                    y_chunk = y.iloc[i:end_idx]
                     
                     logger.info(f"Training on chunk {i//self.training_chunk_size + 1}/{n_chunks} ({len(X_chunk)} samples)")
                     
-                    try:
-                        model.fit(X_chunk, y_chunk)
-                    except MemoryError:
-                        logger.warning(f"Memory error on chunk {i//self.training_chunk_size + 1}. Skipping...")
-                        continue
+                    model.fit(X_chunk, y_chunk)
                     
-                    # Cleanup
+                    # Minimal cleanup
                     del X_chunk, y_chunk
-                    gc.collect()
-                    
-                    # Light memory cleanup every few chunks
-                    if (i // self.training_chunk_size) % 3 == 0:
-                        gc.collect()
                 
                 models[f'q{q}'] = model
                 gc.collect()
@@ -215,41 +202,32 @@ class MemoryEfficientROASForecaster:
                 params = {
                     'objective': 'reg:quantileerror',
                     'quantile_alpha': q,
-                    'learning_rate': learning_rate * 1.2,
-                    'n_estimators': min(n_estimators // 2, 50),
-                    'max_depth': 4,
-                    'subsample': 0.7,
-                    'colsample_bytree': 0.8,
+                    'learning_rate': learning_rate,
+                    'n_estimators': n_estimators,
+                    'max_depth': max_depth,
+                    'subsample': 0.8,
+                    'colsample_bytree': 0.9,
                     'random_state': random_state,
                     'verbosity': 0,
                     'tree_method': 'hist',
                     'grow_policy': 'depthwise',
-                    'max_leaves': 15,
+                    'max_leaves': 31,
                 }
                 
                 model = xgb.XGBRegressor(**params)
                 
-                # Train on chunks with aggressive memory management
+                # Train on chunks with minimal memory management for 32GB RAM
                 for i in range(0, len(X), self.training_chunk_size):
                     end_idx = min(i + self.training_chunk_size, len(X))
-                    X_chunk = X.iloc[i:end_idx].copy()  # Explicit copy
-                    y_chunk = y.iloc[i:end_idx].copy()  # Explicit copy
+                    X_chunk = X.iloc[i:end_idx]
+                    y_chunk = y.iloc[i:end_idx]
                     
                     logger.info(f"Training on chunk {i//self.training_chunk_size + 1}/{n_chunks} ({len(X_chunk)} samples)")
                     
-                    try:
-                        model.fit(X_chunk, y_chunk)
-                    except MemoryError:
-                        logger.warning(f"Memory error on chunk {i//self.training_chunk_size + 1}. Skipping...")
-                        continue
+                    model.fit(X_chunk, y_chunk)
                     
-                    # Cleanup
+                    # Minimal cleanup
                     del X_chunk, y_chunk
-                    gc.collect()
-                    
-                    # Light memory cleanup every few chunks
-                    if (i // self.training_chunk_size) % 3 == 0:
-                        gc.collect()
                 
                 models[f'q{q}'] = model
                 gc.collect()

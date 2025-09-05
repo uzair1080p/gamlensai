@@ -319,11 +319,11 @@ else:
                 st.error("No ROAS columns found in data.")
                 return
             
-            # Model parameters (balanced for 4GB RAM)
-            st.subheader("Model Parameters (Balanced for 4GB RAM)")
-            n_estimators = st.slider("Number of Estimators", 20, 200, 50)  # More reasonable default
-            learning_rate = st.slider("Learning Rate", 0.01, 0.3, 0.08, 0.01)  # Balanced default
-            max_depth = st.slider("Max Depth", 3, 8, 4)  # More reasonable default
+            # Model parameters (optimized for 32GB RAM)
+            st.subheader("Model Parameters (Optimized for 32GB RAM)")
+            n_estimators = st.slider("Number of Estimators", 50, 500, 100)  # Higher default for better quality
+            learning_rate = st.slider("Learning Rate", 0.01, 0.3, 0.05, 0.01)  # Lower for better learning
+            max_depth = st.slider("Max Depth", 4, 12, 6)  # Higher default for complex patterns
         
         with col2:
             # Training options
