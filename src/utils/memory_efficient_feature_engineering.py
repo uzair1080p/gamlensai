@@ -237,3 +237,68 @@ class MemoryEfficientFeatureEngineer:
         except Exception as e:
             logger.error(f"Error creating minimal features: {e}")
             return retention_data
+    
+    def get_feature_summary(self, features: pd.DataFrame) -> Dict:
+        """Get summary of engineered features"""
+        try:
+            numeric_cols = features.select_dtypes(include=[np.number]).columns.tolist()
+            categorical_cols = features.select_dtypes(include=['object']).columns.tolist()
+            
+            summary = {
+                'total_features': len(features.columns),
+                'numeric_features': len(numeric_cols),
+                'categorical_features': len(categorical_cols),
+                'total_samples': len(features),
+                'feature_types': {
+                    'retention_features': len([col for col in features.columns if 'retention' in col.lower()]),
+                    'roas_features': len([col for col in features.columns if 'roas' in col.lower()]),
+                    'level_features': len([col for col in features.columns if 'level' in col.lower()]),
+                    'cost_features': len([col for col in features.columns if any(x in col.lower() for x in ['spend', 'cost', 'revenue', 'cpi', 'arpu'])]),
+                    'platform_features': len([col for col in features.columns if 'platform' in col.lower() or 'subdir' in col.lower()])
+                }
+            }
+            
+            return summary
+        except Exception as e:
+            logger.warning(f"Error creating feature summary: {e}")
+            return {
+                'total_features': len(features.columns),
+                'numeric_features': 0,
+                'categorical_features': 0,
+                'total_samples': len(features),
+                'feature_types': {}
+            }
+    
+    def get_feature_importance(self, model) -> Dict[str, float]:
+        """Extract feature importance from trained model"""
+        try:
+            if hasattr(model, 'feature_importances_'):
+                importance = dict(zip(self.feature_columns, model.feature_importances_))
+                self.feature_importance = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
+                return self.feature_importance
+            else:
+                logger.warning("Model does not have feature_importances_ attribute")
+                return {}
+        except Exception as e:
+            logger.warning(f"Error getting feature importance: {e}")
+            return {}
+    
+    def select_top_features(self, features: pd.DataFrame, n_features: int = 20) -> pd.DataFrame:
+        """Select top features based on importance"""
+        try:
+            if not self.feature_importance:
+                logger.warning("No feature importance available. Returning all features.")
+                return features
+                
+            top_features = list(self.feature_importance.keys())[:n_features]
+            available_features = [f for f in top_features if f in features.columns]
+            
+            # Always include platform and subdirectory columns
+            base_cols = ['platform', 'subdirectory', 'data_type']
+            available_base_cols = [col for col in base_cols if col in features.columns]
+            
+            selected_cols = available_base_cols + available_features
+            return features[selected_cols]
+        except Exception as e:
+            logger.warning(f"Error selecting top features: {e}")
+            return features
