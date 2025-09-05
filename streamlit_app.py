@@ -18,18 +18,10 @@ from utils.data_loader import GameLensDataLoader
 from utils.feature_engineering import GameLensFeatureEngineer
 from utils.roas_forecaster import GameLensROASForecaster
 
-# Import LLM service with error handling
-try:
-    from utils.llm_service import GameLensLLMService
-    LLM_AVAILABLE = True
-except ImportError as e:
-    print(f"Warning: LLM service not available: {e}")
-    GameLensLLMService = None
-    LLM_AVAILABLE = False
-except Exception as e:
-    print(f"Warning: Error loading LLM service: {e}")
-    GameLensLLMService = None
-    LLM_AVAILABLE = False
+# LLM service permanently disabled due to Bus error
+# The openai library causes memory access violations on this server
+GameLensLLMService = None
+LLM_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -551,33 +543,8 @@ else:
                 return None
 
         # If DOCX -> convert to simple markdown
-        try:
-            import docx  # type: ignore
-        except Exception:
-            # Dependency not available at runtime
-            return "Install dependency missing to render FAQ.docx. Please run `pip install python-docx` and restart."
-
-        try:
-            document = docx.Document(selected_path)
-            lines = []
-            for para in document.paragraphs:
-                text = para.text.strip()
-                if not text:
-                    continue
-                style = (para.style.name or "").lower()
-                if "heading" in style:
-                    # Extract heading level digits in style name
-                    level_match = re.search(r"(\d+)", para.style.name or "")
-                    level = int(level_match.group(1)) if level_match else 2
-                    level = max(2, min(4, level))
-                    lines.append("#" * level + " " + text)
-                elif "list" in style:
-                    lines.append(f"- {text}")
-                else:
-                    lines.append(text)
-            return "\n\n".join(lines)
-        except Exception:
-            return None
+        # DOCX reading disabled due to Bus error on this server
+        return "DOCX reading disabled due to server compatibility issues. Please use .md or .txt files instead."
 
     def show_faq():
         """Render FAQ page with LLM-powered answers"""
@@ -594,8 +561,8 @@ else:
         
         # Check if LLM is available
         if not llm_service or not llm_service.is_available():
-            st.warning("⚠️ LLM service not available. Using fallback FAQ system.")
-            st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key\n3. Install openai: `pip install openai`\n4. Restart the application")
+            st.warning("⚠️ LLM service disabled due to server compatibility issues.")
+            st.info("🔧 **Server Issue**: The `openai` library causes Bus errors on this server architecture.\n\n**Current Status**: Using robust fallback FAQ system with keyword-based answers.\n\n**Alternative**: Consider using a different server or container environment for LLM features.")
         
         # Pull objects from session if available
         combined_data = st.session_state.get('combined_data')
