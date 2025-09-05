@@ -18,10 +18,48 @@ from utils.data_loader import GameLensDataLoader
 from utils.feature_engineering import GameLensFeatureEngineer
 from utils.roas_forecaster import GameLensROASForecaster
 
-# LLM service temporarily disabled to isolate Bus error
-# Even with correct openai version, still causing conflicts
-GameLensLLMService = None
+# LLM service with server compatibility check
+import os
+import sys
+
 LLM_AVAILABLE = False
+GameLensLLMService = None
+
+# Check if we're on a server that might have Bus error issues
+def is_server_environment():
+    """Detect if we're running on a server that might have Bus error issues"""
+    try:
+        # Check for common server indicators
+        if os.path.exists('/proc/version'):
+            with open('/proc/version', 'r') as f:
+                version_info = f.read().lower()
+                if 'ubuntu' in version_info or 'linux' in version_info:
+                    return True
+        
+        # Check for cloud server indicators
+        if os.path.exists('/etc/cloud') or os.path.exists('/sys/class/dmi/id/product_name'):
+            return True
+            
+        # Check if running as root (common on servers)
+        if os.geteuid() == 0:
+            return True
+            
+        return False
+    except:
+        return False
+
+# Only try to import LLM service if not on a problematic server
+if not is_server_environment():
+    try:
+        from utils.llm_service import GameLensLLMService
+        LLM_AVAILABLE = True
+        print("✅ LLM service loaded successfully")
+    except Exception as e:
+        print(f"⚠️ LLM service not available: {e}")
+        LLM_AVAILABLE = False
+else:
+    print("🖥️ Server environment detected - skipping LLM import to avoid Bus error")
+    LLM_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -561,8 +599,12 @@ else:
         
         # Check if LLM is available
         if not llm_service or not llm_service.is_available():
-            st.warning("⚠️ LLM service not available. Using fallback FAQ system.")
-            st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key\n3. Install correct openai version: `pip install openai==1.93.0`\n4. Restart the application")
+            if is_server_environment():
+                st.info("🖥️ **Server Mode**: LLM service disabled to prevent Bus errors. Using intelligent fallback FAQ system.")
+                st.success("✅ The fallback system provides comprehensive answers based on your data and model performance.")
+            else:
+                st.warning("⚠️ LLM service not available. Using fallback FAQ system.")
+                st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key\n3. Install correct openai version: `pip install openai==1.93.0`\n4. Restart the application")
         
         # Pull objects from session if available
         combined_data = st.session_state.get('combined_data')
