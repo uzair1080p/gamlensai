@@ -299,12 +299,10 @@ else:
                     st.success(f"✅ Model trained successfully! Target: D{target_day} ROAS")
                     
                     # Show model info
-                    feature_importance = forecaster.get_feature_importance()
-                    if feature_importance:
+                    feature_importance_df = forecaster.get_feature_importance(top_n=10)
+                    if not feature_importance_df.empty:
                         st.subheader("Top 10 Feature Importance")
-                        top_features = list(feature_importance.items())[:10]
-                        importance_df = pd.DataFrame(top_features, columns=['Feature', 'Importance'])
-                        st.dataframe(importance_df, use_container_width=True)
+                        st.dataframe(feature_importance_df, use_container_width=True)
                     
                 except Exception as e:
                     st.error(f"Error training model: {e}")
