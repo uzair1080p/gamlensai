@@ -24,7 +24,7 @@ sys.path.append('src')
 # Import GameLens modules
 from utils.data_loader import GameLensDataLoader
 from utils.memory_efficient_feature_engineering import MemoryEfficientFeatureEngineer
-from utils.roas_forecaster import GameLensROASForecaster
+from utils.memory_efficient_roas_forecaster import MemoryEfficientROASForecaster
 
 # LLM service with server compatibility check
 import os
@@ -351,9 +351,10 @@ else:
                     y = valid_data[target_col]
                     
                     # Initialize and train model
-                    forecaster = GameLensROASForecaster()
+                    log_memory_usage("before model training")
+                    forecaster = MemoryEfficientROASForecaster()
                     
-                    # Train model
+                    # Train model with memory monitoring
                     models = forecaster.train_model(
                         X, y, 
                         quantiles=[0.1, 0.5, 0.9],
@@ -362,6 +363,7 @@ else:
                         max_depth=max_depth,
                         random_state=random_state
                     )
+                    log_memory_usage("after model training")
                     
                     # Store model in session state
                     st.session_state['forecaster'] = forecaster
@@ -395,8 +397,10 @@ else:
         y = st.session_state['y']
         target_day = st.session_state['target_day']
         
-        # Make predictions
+        # Make predictions with memory monitoring
+        log_memory_usage("before predictions")
         predictions = forecaster.predict_with_confidence(X)
+        log_memory_usage("after predictions")
         
         # Model performance metrics
         metrics = forecaster.evaluate_model(X, y)
