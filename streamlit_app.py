@@ -18,9 +18,18 @@ from utils.data_loader import GameLensDataLoader
 from utils.feature_engineering import GameLensFeatureEngineer
 from utils.roas_forecaster import GameLensROASForecaster
 
-# LLM service temporarily disabled to fix Bus error
-GameLensLLMService = None
-LLM_AVAILABLE = False
+# Import LLM service with error handling
+try:
+    from utils.llm_service import GameLensLLMService
+    LLM_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: LLM service not available: {e}")
+    GameLensLLMService = None
+    LLM_AVAILABLE = False
+except Exception as e:
+    print(f"Warning: Error loading LLM service: {e}")
+    GameLensLLMService = None
+    LLM_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -542,8 +551,33 @@ else:
                 return None
 
         # If DOCX -> convert to simple markdown
-        # Temporarily disabled to fix Bus error
-        return "DOCX reading temporarily disabled to fix Bus error. Please use .md or .txt files instead."
+        try:
+            import docx  # type: ignore
+        except Exception:
+            # Dependency not available at runtime
+            return "Install dependency missing to render FAQ.docx. Please run `pip install python-docx` and restart."
+
+        try:
+            document = docx.Document(selected_path)
+            lines = []
+            for para in document.paragraphs:
+                text = para.text.strip()
+                if not text:
+                    continue
+                style = (para.style.name or "").lower()
+                if "heading" in style:
+                    # Extract heading level digits in style name
+                    level_match = re.search(r"(\d+)", para.style.name or "")
+                    level = int(level_match.group(1)) if level_match else 2
+                    level = max(2, min(4, level))
+                    lines.append("#" * level + " " + text)
+                elif "list" in style:
+                    lines.append(f"- {text}")
+                else:
+                    lines.append(text)
+            return "\n\n".join(lines)
+        except Exception:
+            return None
 
     def show_faq():
         """Render FAQ page with LLM-powered answers"""

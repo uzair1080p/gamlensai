@@ -14,5 +14,5 @@ python-dotenv>=0.19.0
 scipy>=1.7.0
 statsmodels>=0.13.0
 joblib>=1.1.0
-# python-docx>=0.8.11  # Temporarily disabled to fix Bus error
-# openai>=1.0.0  # Temporarily disabled to fix Bus error
+python-docx>=0.8.11
+openai>=1.0.0
