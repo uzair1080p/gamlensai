@@ -184,6 +184,7 @@ class MemoryEfficientROASForecaster:
             mse = mean_squared_error(y_eval, y_pred)
             rmse = np.sqrt(mse)
             mape = mean_absolute_percentage_error(y_eval, y_pred)
+            mae = np.mean(np.abs(y_eval - y_pred))  # Mean Absolute Error
             
             # R-squared
             ss_res = np.sum((y_eval - y_pred) ** 2)
@@ -199,6 +200,7 @@ class MemoryEfficientROASForecaster:
                 'r2': r2,
                 'rmse': rmse,
                 'mape': mape,
+                'mae': mae,
                 'confidence_coverage': coverage
             }
             
@@ -212,7 +214,24 @@ class MemoryEfficientROASForecaster:
             
         except Exception as e:
             logger.error(f"Error evaluating model: {e}")
-            return {'r2': 0, 'rmse': float('inf'), 'mape': float('inf'), 'confidence_coverage': 0}
+            return {'r2': 0, 'rmse': float('inf'), 'mape': float('inf'), 'mae': float('inf'), 'confidence_coverage': 0}
+    
+    def get_feature_importance(self, top_n: int = 10) -> pd.DataFrame:
+        """Get feature importance as DataFrame"""
+        if not self.feature_importance:
+            return pd.DataFrame()
+        
+        # Sort by importance
+        sorted_features = sorted(self.feature_importance.items(), key=lambda x: x[1], reverse=True)
+        
+        # Take top N features
+        top_features = sorted_features[:top_n]
+        
+        # Create DataFrame
+        df = pd.DataFrame(top_features, columns=['Feature', 'Importance'])
+        df['Importance'] = df['Importance'].round(4)
+        
+        return df
     
     def save_model(self, filepath: str):
         """Save trained models"""
