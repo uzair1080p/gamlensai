@@ -17,6 +17,7 @@ sys.path.append('src')
 from utils.data_loader import GameLensDataLoader
 from utils.feature_engineering import GameLensFeatureEngineer
 from utils.roas_forecaster import GameLensROASForecaster
+from utils.llm_service import GameLensLLMService
 
 # Page configuration
 st.set_page_config(
@@ -567,9 +568,17 @@ else:
             return None
 
     def show_faq():
-        """Render FAQ page and answer questions using data and models."""
+        """Render FAQ page with LLM-powered answers"""
         st.header("❓ Frequently Asked Questions")
-
+        
+        # Initialize LLM service
+        llm_service = GameLensLLMService()
+        
+        # Check if LLM is available
+        if not llm_service.is_available():
+            st.warning("⚠️ LLM service not available. Please configure OpenAI API key in .env file for enhanced FAQ answers.")
+            st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key\n3. Restart the application")
+        
         # Pull objects from session if available
         combined_data = st.session_state.get('combined_data')
         features_df = st.session_state.get('features_df')
@@ -604,6 +613,7 @@ else:
                     # Predictions summary
                     try:
                         preds = forecaster.predict_with_confidence(X)
+                        kpis['predictions'] = preds
                         kpis['pred_summary'] = {
                             'mean': float(preds['roas_prediction'].mean()),
                             'p10': float(preds['roas_prediction'].quantile(0.1)),
@@ -611,12 +621,13 @@ else:
                             'p90': float(preds['roas_prediction'].quantile(0.9)),
                         }
                     except Exception:
+                        kpis['predictions'] = None
                         kpis['pred_summary'] = {}
 
                     # Feature importance
                     try:
                         fi = forecaster.get_feature_importance(top_n=10)
-                        kpis['top_features'] = fi.to_dict('records')
+                        kpis['top_features'] = list(zip(fi['feature'], fi['importance']))
                     except Exception:
                         kpis['top_features'] = []
 
@@ -626,23 +637,19 @@ else:
                             by_plat = features_df[[target_col, 'platform']].dropna()
                             if not by_plat.empty:
                                 agg = by_plat.groupby('platform')[target_col].mean().sort_values(ascending=False)
-                                kpis['best_platform'] = {
-                                    'name': str(agg.index[0]),
-                                    'value': float(agg.iloc[0])
-                                }
+                                kpis['best_platform'] = str(agg.index[0])
+
+                # Generate recommendations
+                if forecaster is not None and X is not None:
+                    try:
+                        recs = forecaster.generate_recommendations(X, y, target_roas=1.0)
+                        kpis['recommendations'] = recs
+                    except Exception:
+                        kpis['recommendations'] = None
+                        
                 return kpis
             except Exception:
                 return {}
-
-        # Generate recommendation samples for answers
-        def compute_recommendations(target_roas: float = 1.0, limit: int = 5):
-            if forecaster is None or X is None:
-                return []
-            try:
-                recs = forecaster.generate_recommendations(X, y, target_roas)
-                return recs.head(limit).to_dict('records')
-            except Exception:
-                return []
 
         kpis = compute_kpis()
 
@@ -662,15 +669,25 @@ else:
 
         if not questions:
             questions = [
-                "What is the model performance?",
-                "Which platform performs best?",
-                "What are the top drivers of ROAS?",
-                "What ROAS should we expect?",
-                "Which campaigns should we scale or cut?",
+                "What is the current model performance?",
+                "Which platform performs best for ROAS?",
+                "What are the top drivers of ROAS in our data?",
+                "What ROAS should we expect from our campaigns?",
+                "Which campaigns should we scale or cut based on predictions?",
+                "How accurate are our ROAS predictions?",
+                "What insights can you provide about our advertising data?",
             ]
 
-        # Simple intent-based answering with keyword routing
-        def answer_question(q: str) -> str:
+        # LLM-powered answer function
+        def answer_question_with_llm(q: str) -> str:
+            if llm_service.is_available():
+                return llm_service.answer_faq_question(q, kpis, content or "")
+            else:
+                # Fallback to simple keyword-based answers
+                return answer_question_simple(q, kpis)
+
+        # Simple fallback answer function
+        def answer_question_simple(q: str, kpis: dict) -> str:
             ql = q.lower()
             if any(k in ql for k in ["perform", "metric", "accuracy", "r2", "mape", "rmse", "mae"]):
                 m = kpis.get('metrics', {})
@@ -694,14 +711,13 @@ else:
                 bp = kpis.get('best_platform')
                 if not bp:
                     return "Insufficient data to identify the best platform."
-                label = f" (avg {target_col})" if target_col else ""
-                return f"Best platform is {bp['name']}{label}: {bp['value']:.3f}"
+                return f"Best platform is {bp}"
 
             if any(k in ql for k in ["driver", "feature", "important"]):
                 tops = kpis.get('top_features', [])
                 if not tops:
                     return "Feature importance not available. Train a model first."
-                top_list = ", ".join(t['feature'] for t in tops[:5])
+                top_list = ", ".join([t[0] for t in tops[:5]])
                 return f"Top drivers of ROAS include: {top_list}."
 
             if any(k in ql for k in ["expect roas", "forecast", "prediction", "expected roas"]):
@@ -714,12 +730,12 @@ else:
                         f"range ~ p10 {ps.get('p10', float('nan')):.3f} to p90 {ps.get('p90', float('nan')):.3f}.")
 
             if any(k in ql for k in ["scale", "cut", "reduce", "maintain", "budget"]):
-                recs = compute_recommendations(target_roas=1.0, limit=5)
-                if not recs:
+                recs = kpis.get('recommendations')
+                if recs is None or recs.empty:
                     return "Recommendations unavailable. Train a model to generate recommendations."
                 lines = []
-                for r in recs:
-                    lines.append(f"- {r['recommendation']} (pred ROAS {r['predicted_roas']:.3f}, CI [{r.get('confidence_lower', float('nan')):.3f}, {r.get('confidence_upper', float('nan')):.3f}])")
+                for _, r in recs.head(5).iterrows():
+                    lines.append(f"- {r['recommendation']} (pred ROAS {r['predicted_roas']:.3f})")
                 return "\n".join(lines)
 
             if any(k in ql for k in ["data", "coverage", "how much", "volume"]):
@@ -730,10 +746,23 @@ else:
 
             return "This question is currently not supported by the automated Q&A."
 
-        # Render Q&A
+        # Custom question input
+        st.subheader("💬 Ask a Custom Question")
+        custom_question = st.text_input("Ask anything about your ROAS forecasting data:", 
+                                      placeholder="e.g., What insights can you provide about our campaign performance?")
+        
+        if custom_question:
+            with st.spinner("🤖 Generating answer..."):
+                answer = answer_question_with_llm(custom_question)
+                st.write(answer)
+
+        # Render predefined Q&A
+        st.subheader("📋 Common Questions")
         for q in questions:
-            st.subheader(q)
-            st.write(answer_question(q))
+            with st.expander(q):
+                with st.spinner("🤖 Generating answer..."):
+                    answer = answer_question_with_llm(q)
+                    st.write(answer)
 
     def main():
         """Main application"""
