@@ -7,6 +7,11 @@ This script tests the core functionality without problematic imports.
 import os
 import sys
 
+# Add the current directory to Python path to find utils module
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 def test_server_environment_detection():
     """Test the server environment detection logic"""
     print("Testing server environment detection...")
