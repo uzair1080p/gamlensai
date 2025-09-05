@@ -30,7 +30,11 @@ except Exception as e:
 logger = logging.getLogger(__name__)
 
 class GameLensROASForecaster:
-    """ROAS forecasting model for GameLens AI - predicts D15/D30/D45/D90 ROAS from early data"""
+    """ROAS forecasting model for GameLens AI - predicts D15/D30/D45/D90 ROAS from early data
+    
+    Uses LightGBM by default, automatically falls back to XGBoost if LightGBM is not available
+    (e.g., due to libgomp dependency issues on some servers).
+    """
     
     def __init__(self, target_day: int = 30):
         self.target_day = target_day
@@ -43,8 +47,8 @@ class GameLensROASForecaster:
                    n_estimators: int = 100,
                    learning_rate: float = 0.05,
                    max_depth: int = 6,
-                   random_state: int = 42) -> Dict[str, lgb.LGBMRegressor]:
-        """Train LightGBM models for different quantiles to get confidence intervals"""
+                   random_state: int = 42) -> Dict[str, any]:
+        """Train ML models (LightGBM or XGBoost) for different quantiles to get confidence intervals"""
         
         # Ensure only numeric features are used
         X_numeric = X.select_dtypes(include=[np.number])
