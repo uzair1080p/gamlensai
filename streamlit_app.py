@@ -397,13 +397,19 @@ else:
         y = st.session_state['y']
         target_day = st.session_state['target_day']
         
+        # Check dataset size and warn if using subset
+        if len(X) > 100000:
+            st.info(f"📊 Large dataset detected ({len(X):,} samples). Using subset of 100,000 samples for predictions to ensure responsive performance.")
+        
         # Make predictions with memory monitoring
         log_memory_usage("before predictions")
-        predictions = forecaster.predict_with_confidence(X)
+        with st.spinner("Making predictions on dataset..."):
+            predictions = forecaster.predict_with_confidence(X)
         log_memory_usage("after predictions")
         
         # Model performance metrics
-        metrics = forecaster.evaluate_model(X, y)
+        with st.spinner("Evaluating model performance..."):
+            metrics = forecaster.evaluate_model(X, y)
         
         # Display metrics
         col1, col2, col3, col4 = st.columns(4)

@@ -135,7 +135,7 @@ class MemoryEfficientROASForecaster:
     
     
     def predict_with_confidence(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Make predictions with confidence intervals on full dataset"""
+        """Make predictions with confidence intervals on dataset"""
         
         if not self.models:
             raise ValueError("Models not trained. Call train_model() first.")
@@ -145,8 +145,13 @@ class MemoryEfficientROASForecaster:
         if len(X_numeric.columns) != len(X.columns):
             X = X_numeric
         
-        # Use standard prediction for all datasets with 32GB RAM
-        logger.info(f"Making predictions on full dataset ({len(X)} samples) with 32GB RAM.")
+        # Limit predictions for very large datasets to prevent hanging
+        max_prediction_samples = 100000  # Limit to 100k samples for predictions
+        if len(X) > max_prediction_samples:
+            logger.info(f"Large dataset detected ({len(X)} samples). Using subset for predictions ({max_prediction_samples} samples).")
+            X = X.sample(n=max_prediction_samples, random_state=42)
+        
+        logger.info(f"Making predictions on dataset ({len(X)} samples) with 32GB RAM.")
         return self._predict_standard(X)
     
     def _predict_standard(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -172,9 +177,14 @@ class MemoryEfficientROASForecaster:
         logger.info("Evaluating model performance...")
         
         try:
-            # Use full dataset for evaluation with 32GB RAM
-            logger.info("Using full dataset for evaluation with 32GB RAM.")
-            X_eval, y_eval = X, y
+            # Limit evaluation dataset to prevent hanging
+            max_eval_samples = 50000  # Limit to 50k samples for evaluation
+            if len(X) > max_eval_samples:
+                logger.info(f"Large dataset detected ({len(X)} samples). Using subset for evaluation ({max_eval_samples} samples).")
+                X_eval, _, y_eval, _ = train_test_split(X, y, test_size=1-max_eval_samples/len(X), random_state=42)
+            else:
+                logger.info("Using full dataset for evaluation with 32GB RAM.")
+                X_eval, y_eval = X, y
             
             # Make predictions
             predictions = self.predict_with_confidence(X_eval)
