@@ -1,11 +1,31 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
-import lightgbm as lgb
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 import joblib
 import logging
+
+# Try to import LightGBM, fallback to XGBoost if it fails
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info("✅ LightGBM imported successfully")
+except Exception as e:
+    LIGHTGBM_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning(f"⚠️ LightGBM not available: {e}")
+    logger.info("🔄 Falling back to XGBoost for ROAS forecasting")
+    
+    try:
+        import xgboost as xgb
+        XGBOOST_AVAILABLE = True
+        logger.info("✅ XGBoost imported successfully as fallback")
+    except Exception as e2:
+        XGBOOST_AVAILABLE = False
+        logger.error(f"❌ Neither LightGBM nor XGBoost available: {e2}")
+        raise ImportError("Neither LightGBM nor XGBoost could be imported. Please install one of them.")
 
 logger = logging.getLogger(__name__)
 
@@ -35,31 +55,59 @@ class GameLensROASForecaster:
         
         models = {}
         
-        for q in quantiles:
-            logger.info(f"Training model for quantile {q}")
-            
-            # LightGBM parameters optimized for quantile regression
-            params = {
-                'objective': 'quantile',
-                'alpha': q,
-                'metric': 'quantile',
-                'boosting_type': 'gbdt',
-                'num_leaves': 31,
-                'learning_rate': learning_rate,
-                'n_estimators': n_estimators,
-                'max_depth': max_depth,
-                'feature_fraction': 0.9,
-                'bagging_fraction': 0.8,
-                'bagging_freq': 5,
-                'verbose': -1,
-                'random_state': random_state
-            }
-            
-            # Train model
-            model = lgb.LGBMRegressor(**params)
-            model.fit(X, y)
-            
-            models[f'q{q}'] = model
+        if LIGHTGBM_AVAILABLE:
+            # Use LightGBM for quantile regression
+            for q in quantiles:
+                logger.info(f"Training LightGBM model for quantile {q}")
+                
+                # LightGBM parameters optimized for quantile regression
+                params = {
+                    'objective': 'quantile',
+                    'alpha': q,
+                    'metric': 'quantile',
+                    'boosting_type': 'gbdt',
+                    'num_leaves': 31,
+                    'learning_rate': learning_rate,
+                    'n_estimators': n_estimators,
+                    'max_depth': max_depth,
+                    'feature_fraction': 0.9,
+                    'bagging_fraction': 0.8,
+                    'bagging_freq': 5,
+                    'verbose': -1,
+                    'random_state': random_state
+                }
+                
+                # Train model
+                model = lgb.LGBMRegressor(**params)
+                model.fit(X, y)
+                
+                models[f'q{q}'] = model
+                
+        elif XGBOOST_AVAILABLE:
+            # Use XGBoost for quantile regression (fallback)
+            for q in quantiles:
+                logger.info(f"Training XGBoost model for quantile {q}")
+                
+                # XGBoost parameters for quantile regression
+                params = {
+                    'objective': 'reg:quantileerror',
+                    'quantile_alpha': q,
+                    'learning_rate': learning_rate,
+                    'n_estimators': n_estimators,
+                    'max_depth': max_depth,
+                    'subsample': 0.8,
+                    'colsample_bytree': 0.9,
+                    'random_state': random_state,
+                    'verbosity': 0
+                }
+                
+                # Train model
+                model = xgb.XGBRegressor(**params)
+                model.fit(X, y)
+                
+                models[f'q{q}'] = model
+        else:
+            raise ImportError("Neither LightGBM nor XGBoost is available for training")
             
         self.models = models
         
