@@ -7,15 +7,23 @@ from plotly.subplots import make_subplots
 import sys
 import os
 import re
+import gc
 from datetime import datetime
 from typing import Optional
+
+# Try to import psutil for memory monitoring
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 
 # Add src to path for imports
 sys.path.append('src')
 
 # Import GameLens modules
 from utils.data_loader import GameLensDataLoader
-from utils.feature_engineering import GameLensFeatureEngineer
+from utils.memory_efficient_feature_engineering import MemoryEfficientFeatureEngineer
 from utils.roas_forecaster import GameLensROASForecaster
 
 # LLM service with server compatibility check
@@ -76,6 +84,25 @@ if 'authenticated' not in st.session_state:
 # Demo credentials
 DEMO_USERNAME = "demo"
 DEMO_PASSWORD = "demo123"
+
+# Memory monitoring function
+def get_memory_usage():
+    """Get current memory usage"""
+    if PSUTIL_AVAILABLE:
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss / 1024 / 1024
+            return f"{memory_mb:.1f} MB"
+        except:
+            return "Unknown"
+    return "psutil not available"
+
+def log_memory_usage(stage: str):
+    """Log memory usage at different stages"""
+    memory_usage = get_memory_usage()
+    print(f"Memory usage at {stage}: {memory_usage}")
+    gc.collect()  # Force garbage collection
 
 # Authentication UI
 if not st.session_state['authenticated']:
@@ -141,9 +168,12 @@ else:
     def load_data():
         """Load and cache data"""
         try:
+            log_memory_usage("before data loading")
             data_loader = GameLensDataLoader()
             all_data = data_loader.load_all_data()
+            log_memory_usage("after loading all data")
             combined_data = data_loader.combine_platform_data(all_data)
+            log_memory_usage("after combining data")
             return combined_data, data_loader
         except Exception as e:
             st.error(f"Error loading data: {e}")
@@ -153,8 +183,10 @@ else:
     def create_features(combined_data):
         """Create and cache features"""
         try:
-            feature_engineer = GameLensFeatureEngineer()
+            log_memory_usage("before feature engineering")
+            feature_engineer = MemoryEfficientFeatureEngineer()
             features_df = feature_engineer.create_features(combined_data)
+            log_memory_usage("after feature engineering")
             return features_df, feature_engineer
         except Exception as e:
             st.error(f"Error creating features: {e}")

@@ -16,3 +16,4 @@ statsmodels>=0.13.0
 joblib>=1.1.0
 python-docx>=0.8.11
 openai==1.93.0  # Use same version as working RAG system
+psutil>=5.8.0  # For memory monitoring
