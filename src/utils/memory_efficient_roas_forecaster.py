@@ -31,14 +31,13 @@ except Exception as e:
 logger = logging.getLogger(__name__)
 
 class MemoryEfficientROASForecaster:
-    """ROAS forecasting model for GameLens AI - optimized for 32GB RAM servers with quality focus"""
+    """ROAS forecasting model for GameLens AI - optimized for 32GB RAM servers with full dataset training"""
     
     def __init__(self, target_day: int = 30):
         self.target_day = target_day
         self.models = {}
         self.feature_importance = {}
         self.performance_metrics = {}
-        self.training_chunk_size = 2000  # Larger chunks for 32GB RAM
         
     def train_model(self, X: pd.DataFrame, y: pd.Series, 
                    quantiles: List[float] = [0.1, 0.5, 0.9],
@@ -56,14 +55,9 @@ class MemoryEfficientROASForecaster:
             logger.warning(f"Removing object columns for training: {list(object_cols)}")
             X = X_numeric
         
-        # Use standard training for most datasets with 32GB RAM
-        if len(X) <= 10000:
-            logger.info(f"Dataset ({len(X)} samples). Using standard training with 32GB RAM.")
-            return self._train_model_standard(X, y, quantiles, n_estimators, learning_rate, max_depth, random_state)
-        else:
-            # Only use chunked training for very large datasets
-            logger.info(f"Very large dataset ({len(X)} samples). Using chunked training (chunk size: {self.training_chunk_size})")
-            return self._train_model_chunked(X, y, quantiles, n_estimators, learning_rate, max_depth, random_state)
+        # Use standard training for all datasets with 32GB RAM - no chunking needed
+        logger.info(f"Training on full dataset ({len(X)} samples) with 32GB RAM - no chunking required.")
+        return self._train_model_standard(X, y, quantiles, n_estimators, learning_rate, max_depth, random_state)
     
     def _train_model_standard(self, X: pd.DataFrame, y: pd.Series, 
                              quantiles: List[float], n_estimators: int,
@@ -138,153 +132,10 @@ class MemoryEfficientROASForecaster:
             
         return models
     
-    def _train_model_chunked(self, X: pd.DataFrame, y: pd.Series, 
-                            quantiles: List[float], n_estimators: int,
-                            learning_rate: float, max_depth: int, 
-                            random_state: int) -> Dict[str, any]:
-        """Chunked training for large datasets"""
-        logger.info(f"Training with chunked approach (chunk size: {self.training_chunk_size})")
-        
-        # Split data into chunks
-        n_chunks = (len(X) + self.training_chunk_size - 1) // self.training_chunk_size
-        logger.info(f"Processing {len(X)} samples in {n_chunks} chunks")
-        
-        models = {}
-        
-        if LIGHTGBM_AVAILABLE:
-            # Train models using chunked approach
-            for q in quantiles:
-                logger.info(f"Training LightGBM model for quantile {q} using chunked data")
-                
-                # Optimized parameters for 32GB RAM - focus on model quality
-                params = {
-                    'objective': 'quantile',
-                    'alpha': q,
-                    'metric': 'quantile',
-                    'boosting_type': 'gbdt',
-                    'num_leaves': 31,  # Full tree size
-                    'learning_rate': learning_rate,  # Use original learning rate
-                    'n_estimators': n_estimators,  # Use full number of estimators
-                    'max_depth': max_depth,  # Use full depth
-                    'feature_fraction': 0.9,  # Use most features
-                    'bagging_fraction': 0.8,  # Use most data
-                    'bagging_freq': 5,
-                    'verbose': -1,
-                    'random_state': random_state,
-                    'force_col_wise': True,
-                    'min_data_in_leaf': 20,
-                    'min_gain_to_split': 0.0,  # Allow full learning
-                }
-                
-                model = lgb.LGBMRegressor(**params)
-                
-                # Train on chunks with minimal memory management for 32GB RAM
-                for i in range(0, len(X), self.training_chunk_size):
-                    end_idx = min(i + self.training_chunk_size, len(X))
-                    X_chunk = X.iloc[i:end_idx]
-                    y_chunk = y.iloc[i:end_idx]
-                    
-                    logger.info(f"Training on chunk {i//self.training_chunk_size + 1}/{n_chunks} ({len(X_chunk)} samples)")
-                    
-                    model.fit(X_chunk, y_chunk)
-                    
-                    # Minimal cleanup
-                    del X_chunk, y_chunk
-                
-                models[f'q{q}'] = model
-                gc.collect()
-                
-        elif XGBOOST_AVAILABLE:
-            # Train models using chunked approach
-            for q in quantiles:
-                logger.info(f"Training XGBoost model for quantile {q} using chunked data")
-                
-                params = {
-                    'objective': 'reg:quantileerror',
-                    'quantile_alpha': q,
-                    'learning_rate': learning_rate,
-                    'n_estimators': n_estimators,
-                    'max_depth': max_depth,
-                    'subsample': 0.8,
-                    'colsample_bytree': 0.9,
-                    'random_state': random_state,
-                    'verbosity': 0,
-                    'tree_method': 'hist',
-                    'grow_policy': 'depthwise',
-                    'max_leaves': 31,
-                }
-                
-                model = xgb.XGBRegressor(**params)
-                
-                # Train on chunks with minimal memory management for 32GB RAM
-                for i in range(0, len(X), self.training_chunk_size):
-                    end_idx = min(i + self.training_chunk_size, len(X))
-                    X_chunk = X.iloc[i:end_idx]
-                    y_chunk = y.iloc[i:end_idx]
-                    
-                    logger.info(f"Training on chunk {i//self.training_chunk_size + 1}/{n_chunks} ({len(X_chunk)} samples)")
-                    
-                    model.fit(X_chunk, y_chunk)
-                    
-                    # Minimal cleanup
-                    del X_chunk, y_chunk
-                
-                models[f'q{q}'] = model
-                gc.collect()
-        else:
-            raise ImportError("Neither LightGBM nor XGBoost is available for training")
-            
-        self.models = models
-        
-        # Store feature importance from median model
-        if 'q0.5' in models:
-            self.feature_importance = dict(zip(X.columns, models['q0.5'].feature_importances_))
-            
-        return models
     
-    def _train_simple_fallback(self, X: pd.DataFrame, y: pd.Series, 
-                              quantiles: List[float], random_state: int) -> Dict[str, any]:
-        """Ultra-simple fallback training using basic statistical models"""
-        logger.info("Using simple statistical fallback models")
-        
-        models = {}
-        
-        # Use simple quantile regression with minimal memory
-        for q in quantiles:
-            logger.info(f"Creating simple model for quantile {q}")
-            
-            # Create a simple wrapper that just returns quantile values
-            class SimpleQuantileModel:
-                def __init__(self, quantile_value):
-                    self.quantile_value = quantile_value
-                
-                def predict(self, X):
-                    # Return constant quantile value for all predictions
-                    return np.full(len(X), self.quantile_value)
-                
-                @property
-                def feature_importances_(self):
-                    # Return equal importance for all features
-                    return np.ones(X.shape[1]) / X.shape[1]
-            
-            # Calculate the actual quantile from training data
-            quantile_value = np.quantile(y, q)
-            models[f'q{q}'] = SimpleQuantileModel(quantile_value)
-            
-            # Force garbage collection
-            gc.collect()
-        
-        self.models = models
-        
-        # Store simple feature importance
-        if 'q0.5' in models:
-            self.feature_importance = dict(zip(X.columns, models['q0.5'].feature_importances_))
-        
-        logger.info("Simple fallback models created successfully")
-        return models
     
     def predict_with_confidence(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Make predictions with confidence intervals using chunked approach if needed"""
+        """Make predictions with confidence intervals on full dataset"""
         
         if not self.models:
             raise ValueError("Models not trained. Call train_model() first.")
@@ -294,12 +145,9 @@ class MemoryEfficientROASForecaster:
         if len(X_numeric.columns) != len(X.columns):
             X = X_numeric
         
-        # Check if we need chunked prediction
-        if len(X) > self.training_chunk_size:
-            logger.info(f"Large prediction set ({len(X)} samples). Using chunked prediction.")
-            return self._predict_chunked(X)
-        else:
-            return self._predict_standard(X)
+        # Use standard prediction for all datasets with 32GB RAM
+        logger.info(f"Making predictions on full dataset ({len(X)} samples) with 32GB RAM.")
+        return self._predict_standard(X)
     
     def _predict_standard(self, X: pd.DataFrame) -> pd.DataFrame:
         """Standard prediction for smaller datasets"""
@@ -318,44 +166,15 @@ class MemoryEfficientROASForecaster:
         
         return result
     
-    def _predict_chunked(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Chunked prediction for large datasets"""
-        logger.info(f"Making predictions in chunks (chunk size: {self.training_chunk_size})")
-        
-        all_predictions = []
-        n_chunks = (len(X) + self.training_chunk_size - 1) // self.training_chunk_size
-        
-        for i in range(0, len(X), self.training_chunk_size):
-            end_idx = min(i + self.training_chunk_size, len(X))
-            X_chunk = X.iloc[i:end_idx]
-            
-            logger.info(f"Predicting on chunk {i//self.training_chunk_size + 1}/{n_chunks} ({len(X_chunk)} samples)")
-            
-            chunk_predictions = self._predict_standard(X_chunk)
-            all_predictions.append(chunk_predictions)
-            
-            # Clear chunk data
-            del X_chunk, chunk_predictions
-            gc.collect()
-        
-        # Combine all predictions
-        result = pd.concat(all_predictions, ignore_index=True)
-        del all_predictions
-        gc.collect()
-        
-        return result
     
     def evaluate_model(self, X: pd.DataFrame, y: pd.Series) -> Dict[str, float]:
-        """Evaluate model performance with memory optimization"""
+        """Evaluate model performance on full dataset"""
         logger.info("Evaluating model performance...")
         
         try:
-            # Use smaller test set for evaluation to save memory
-            if len(X) > 2000:
-                logger.info("Large dataset detected. Using subset for evaluation.")
-                X_eval, _, y_eval, _ = train_test_split(X, y, test_size=0.8, random_state=42)
-            else:
-                X_eval, y_eval = X, y
+            # Use full dataset for evaluation with 32GB RAM
+            logger.info("Using full dataset for evaluation with 32GB RAM.")
+            X_eval, y_eval = X, y
             
             # Make predictions
             predictions = self.predict_with_confidence(X_eval)
