@@ -26,6 +26,13 @@ class GameLensROASForecaster:
                    random_state: int = 42) -> Dict[str, lgb.LGBMRegressor]:
         """Train LightGBM models for different quantiles to get confidence intervals"""
         
+        # Ensure only numeric features are used
+        X_numeric = X.select_dtypes(include=[np.number])
+        if len(X_numeric.columns) != len(X.columns):
+            object_cols = X.select_dtypes(include=['object']).columns
+            logger.warning(f"Removing object columns for training: {list(object_cols)}")
+            X = X_numeric
+        
         models = {}
         
         for q in quantiles:
@@ -67,6 +74,13 @@ class GameLensROASForecaster:
         
         if not self.models:
             raise ValueError("Models not trained. Call train_model() first.")
+        
+        # Ensure only numeric features are used (same as training)
+        X_numeric = X.select_dtypes(include=[np.number])
+        if len(X_numeric.columns) != len(X.columns):
+            object_cols = X.select_dtypes(include=['object']).columns
+            logger.warning(f"Removing object columns for prediction: {list(object_cols)}")
+            X = X_numeric
             
         predictions = {}
         

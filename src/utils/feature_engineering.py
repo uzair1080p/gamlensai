@@ -288,6 +288,13 @@ class GameLensFeatureEngineer:
         # Ensure all numeric columns are float
         for col in numeric_cols:
             cleaned[col] = pd.to_numeric(cleaned[col], errors='coerce').fillna(0)
+        
+        # Remove any remaining object columns that aren't properly encoded
+        # Keep only numeric columns for model training
+        object_cols = cleaned.select_dtypes(include=['object']).columns
+        if len(object_cols) > 0:
+            logger.warning(f"Removing object columns that weren't properly encoded: {list(object_cols)}")
+            cleaned = cleaned.drop(columns=object_cols)
             
         return cleaned
     
