@@ -17,7 +17,19 @@ sys.path.append('src')
 from utils.data_loader import GameLensDataLoader
 from utils.feature_engineering import GameLensFeatureEngineer
 from utils.roas_forecaster import GameLensROASForecaster
-from utils.llm_service import GameLensLLMService
+
+# Import LLM service with error handling
+try:
+    from utils.llm_service import GameLensLLMService
+    LLM_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: LLM service not available: {e}")
+    GameLensLLMService = None
+    LLM_AVAILABLE = False
+except Exception as e:
+    print(f"Warning: Error loading LLM service: {e}")
+    GameLensLLMService = None
+    LLM_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -571,13 +583,19 @@ else:
         """Render FAQ page with LLM-powered answers"""
         st.header("❓ Frequently Asked Questions")
         
-        # Initialize LLM service
-        llm_service = GameLensLLMService()
+        # Initialize LLM service if available
+        llm_service = None
+        if LLM_AVAILABLE and GameLensLLMService:
+            try:
+                llm_service = GameLensLLMService()
+            except Exception as e:
+                st.warning(f"⚠️ Error initializing LLM service: {e}")
+                llm_service = None
         
         # Check if LLM is available
-        if not llm_service.is_available():
-            st.warning("⚠️ LLM service not available. Please configure OpenAI API key in .env file for enhanced FAQ answers.")
-            st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key\n3. Restart the application")
+        if not llm_service or not llm_service.is_available():
+            st.warning("⚠️ LLM service not available. Using fallback FAQ system.")
+            st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key\n3. Install openai: `pip install openai`\n4. Restart the application")
         
         # Pull objects from session if available
         combined_data = st.session_state.get('combined_data')
@@ -680,8 +698,12 @@ else:
 
         # LLM-powered answer function
         def answer_question_with_llm(q: str) -> str:
-            if llm_service.is_available():
-                return llm_service.answer_faq_question(q, kpis, content or "")
+            if llm_service and llm_service.is_available():
+                try:
+                    return llm_service.answer_faq_question(q, kpis, content or "")
+                except Exception as e:
+                    st.error(f"Error generating LLM answer: {e}")
+                    return answer_question_simple(q, kpis)
             else:
                 # Fallback to simple keyword-based answers
                 return answer_question_simple(q, kpis)

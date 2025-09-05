@@ -1,11 +1,21 @@
 import os
-import openai
 from typing import Dict, List, Optional
 import logging
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Try to import OpenAI with error handling
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    openai = None
+
+# Try to load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available, will use system environment variables
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +28,19 @@ class GameLensLLMService:
         self.max_tokens = int(os.getenv('OPENAI_MAX_TOKENS', '500'))
         self.temperature = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
         
-        if not self.api_key:
+        if not OPENAI_AVAILABLE:
+            logger.warning("OpenAI library not available. FAQ functionality will be limited.")
+            self.available = False
+        elif not self.api_key:
             logger.warning("OpenAI API key not found. FAQ functionality will be limited.")
             self.available = False
         else:
-            openai.api_key = self.api_key
-            self.available = True
+            try:
+                openai.api_key = self.api_key
+                self.available = True
+            except Exception as e:
+                logger.error(f"Error setting up OpenAI API: {e}")
+                self.available = False
     
     def is_available(self) -> bool:
         """Check if LLM service is available"""
@@ -32,7 +49,7 @@ class GameLensLLMService:
     def answer_faq_question(self, question: str, context_data: Dict, faq_content: str = "") -> str:
         """Answer FAQ question using GPT with context from the dashboard"""
         
-        if not self.available:
+        if not self.available or not OPENAI_AVAILABLE:
             return "❌ LLM service not available. Please configure OpenAI API key in .env file."
         
         try:
@@ -127,7 +144,7 @@ Please provide a helpful answer based on the context and FAQ content above."""
     def generate_insights(self, data_summary: Dict) -> str:
         """Generate general insights about the data and model"""
         
-        if not self.available:
+        if not self.available or not OPENAI_AVAILABLE:
             return "❌ LLM service not available for insights generation."
         
         try:
