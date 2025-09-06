@@ -632,9 +632,33 @@ else:
             except Exception:
                 return None
 
-        # If DOCX -> convert to simple markdown
-        # DOCX import also causing Bus error - temporarily disabled
-        return "DOCX reading temporarily disabled. Please use .md or .txt files instead."
+        # If DOCX -> convert to markdown using python-docx
+        if selected_path.lower().endswith(".docx"):
+            try:
+                from docx import Document
+                doc = Document(selected_path)
+                
+                # Extract text from all paragraphs
+                content_parts = []
+                for paragraph in doc.paragraphs:
+                    text = paragraph.text.strip()
+                    if text:  # Only add non-empty paragraphs
+                        content_parts.append(text)
+                
+                # Join all content
+                full_content = "\n\n".join(content_parts)
+                
+                if full_content.strip():
+                    return full_content
+                else:
+                    return None
+                    
+            except ImportError:
+                return "❌ python-docx library not available. Please install with: pip install python-docx"
+            except Exception as e:
+                return f"❌ Error reading DOCX file: {str(e)}"
+        
+        return None
 
     def show_faq():
         """Render FAQ page with LLM-powered answers"""
@@ -731,17 +755,64 @@ else:
 
         # Parse questions from FAQ content (docx/md/txt). Default questions if none found.
         content = _read_faq_content()
+        
+        # Show content loading status
+        if content and not content.startswith("❌"):
+            st.success(f"✅ FAQ content loaded successfully ({len(content)} characters)")
+            if "FAQ.docx" in str(content) or content.count('\n') > 5:
+                st.info("📄 DOCX content detected - questions will be extracted from your FAQ document")
+        elif content and content.startswith("❌"):
+            st.error(content)
+        else:
+            st.info("📝 No FAQ document found - using default questions")
+        
         questions = []
         if content:
-            for raw in content.splitlines():
+            # Enhanced parsing for DOCX content
+            lines = content.splitlines()
+            for i, raw in enumerate(lines):
                 line = raw.strip(" -\t")
                 if not line:
                     continue
-                # Treat lines starting with Q or ending with ? as questions
-                if line.lower().startswith('q') or line.endswith('?'):
-                    # Remove leading "Q:" if present
-                    line = re.sub(r'^q\s*[:\-]\s*', '', line, flags=re.I)
-                    questions.append(line)
+                
+                # More flexible question detection
+                is_question = (
+                    line.lower().startswith(('q', 'question')) or 
+                    line.endswith('?') or
+                    line.lower().startswith('what') or
+                    line.lower().startswith('how') or
+                    line.lower().startswith('why') or
+                    line.lower().startswith('when') or
+                    line.lower().startswith('where') or
+                    line.lower().startswith('which') or
+                    line.lower().startswith('who') or
+                    line.lower().startswith('can') or
+                    line.lower().startswith('should') or
+                    line.lower().startswith('will') or
+                    line.lower().startswith('does') or
+                    line.lower().startswith('is') or
+                    line.lower().startswith('are')
+                )
+                
+                if is_question:
+                    # Clean up the question
+                    line = re.sub(r'^q\s*[:\-\.]\s*', '', line, flags=re.I)
+                    line = re.sub(r'^question\s*[:\-\.]\s*', '', line, flags=re.I)
+                    line = line.strip()
+                    if line and len(line) > 10:  # Only add substantial questions
+                        questions.append(line)
+            
+            # If no questions found, try to extract from paragraph structure
+            if not questions and content:
+                # Split by double newlines and look for question patterns
+                paragraphs = content.split('\n\n')
+                for para in paragraphs:
+                    para = para.strip()
+                    if para and ('?' in para or para.lower().startswith(('what', 'how', 'why', 'when', 'where', 'which', 'who', 'can', 'should', 'will', 'does', 'is', 'are'))):
+                        # Take the first sentence if it looks like a question
+                        first_sentence = para.split('.')[0].strip()
+                        if first_sentence and len(first_sentence) > 10:
+                            questions.append(first_sentence)
 
         if not questions:
             questions = [
@@ -753,6 +824,9 @@ else:
                 "How accurate are our ROAS predictions?",
                 "What insights can you provide about our advertising data?",
             ]
+            st.warning("⚠️ No questions found in FAQ document - using default questions")
+        else:
+            st.success(f"📋 Found {len(questions)} questions in your FAQ document")
 
         # LLM-powered answer function with enhanced context
         def answer_question_with_llm(q: str) -> str:

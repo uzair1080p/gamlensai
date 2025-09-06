@@ -73,12 +73,12 @@ Guidelines:
             user_prompt = f"""Context from current dashboard:
 {context_prompt}
 
-FAQ Content (if available):
+FAQ Content from your documentation (if available):
 {faq_content}
 
 Question: {question}
 
-Please provide a helpful answer based on the context and FAQ content above."""
+Please provide a helpful answer based on the context and FAQ content above. If the FAQ content contains relevant information, use it to provide accurate, detailed answers. If the question is about your specific data or model performance, use the dashboard context to provide data-driven insights."""
 
             # Make API call using new OpenAI API format
             response = self.client.chat.completions.create(
