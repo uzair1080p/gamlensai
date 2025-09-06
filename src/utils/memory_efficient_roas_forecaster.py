@@ -47,6 +47,16 @@ class MemoryEfficientROASForecaster:
                    random_state: int = 42) -> Dict[str, any]:
         """Train ML models with memory optimization"""
         logger.info("Starting memory-efficient model training...")
+        logger.info(f"Target variable stats: mean={y.mean():.4f}, std={y.std():.4f}, min={y.min():.4f}, max={y.max():.4f}")
+        logger.info(f"Features: {len(X.columns)} columns, samples: {len(X)}")
+        
+        # Validate data quality
+        if y.std() == 0:
+            logger.warning("Target variable has zero variance - this will cause poor model performance")
+        if X.isnull().sum().sum() > 0:
+            logger.warning(f"Found {X.isnull().sum().sum()} missing values in features")
+        if y.isnull().sum() > 0:
+            logger.warning(f"Found {y.isnull().sum()} missing values in target")
         
         # Ensure only numeric features are used
         X_numeric = X.select_dtypes(include=[np.number])
@@ -107,12 +117,15 @@ class MemoryEfficientROASForecaster:
                     'learning_rate': learning_rate,
                     'n_estimators': n_estimators,
                     'max_depth': max_depth,
-                    'subsample': 0.7,  # Reduced from 0.8
-                    'colsample_bytree': 0.8,  # Reduced from 0.9
+                    'subsample': 0.8,  # Increased for better performance
+                    'colsample_bytree': 0.9,  # Increased for better performance
                     'random_state': random_state,
                     'verbosity': 0,
                     'tree_method': 'hist',  # Memory efficient
                     'grow_policy': 'depthwise',  # Memory efficient
+                    'min_child_weight': 1,  # Added for better performance
+                    'reg_alpha': 0.1,  # L1 regularization
+                    'reg_lambda': 1.0,  # L2 regularization
                 }
                 
                 model = xgb.XGBRegressor(**params)
@@ -155,19 +168,46 @@ class MemoryEfficientROASForecaster:
         return self._predict_standard(X)
     
     def _predict_standard(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Standard prediction for smaller datasets"""
+        """Standard prediction for smaller datasets with proper index handling"""
         predictions = {}
         
         for quantile, model in self.models.items():
-            pred = model.predict(X)
-            predictions[f'roas_pred_{quantile}'] = pred
+            try:
+                pred = model.predict(X)
+                # Ensure predictions are finite and reasonable
+                pred = np.where(np.isfinite(pred), pred, 0.0)
+                pred = np.clip(pred, 0.0, 10.0)  # Clip to reasonable ROAS range
+                predictions[f'roas_pred_{quantile}'] = pred
+            except Exception as e:
+                logger.error(f"Error predicting with quantile {quantile}: {e}")
+                predictions[f'roas_pred_{quantile}'] = np.zeros(len(X))
         
-        # Create result DataFrame
-        result = pd.DataFrame(predictions)
-        result['roas_prediction'] = result['roas_pred_q0.5']  # Median as main prediction
-        result['roas_lower_bound'] = result['roas_pred_q0.1']  # 10th percentile
-        result['roas_upper_bound'] = result['roas_pred_q0.9']  # 90th percentile
+        # Create result DataFrame with proper index from X
+        result = pd.DataFrame(index=X.index)
+        
+        # Add predictions with proper index alignment
+        if 'roas_pred_q0.5' in predictions:
+            result['roas_prediction'] = predictions['roas_pred_q0.5']
+        else:
+            result['roas_prediction'] = np.zeros(len(X))
+            
+        if 'roas_pred_q0.1' in predictions:
+            result['roas_lower_bound'] = predictions['roas_pred_q0.1']
+        else:
+            result['roas_lower_bound'] = np.zeros(len(X))
+            
+        if 'roas_pred_q0.9' in predictions:
+            result['roas_upper_bound'] = predictions['roas_pred_q0.9']
+        else:
+            result['roas_upper_bound'] = np.zeros(len(X))
+        
+        # Calculate confidence interval
         result['confidence_interval'] = result['roas_upper_bound'] - result['roas_lower_bound']
+        
+        # Ensure all values are finite and reasonable
+        for col in result.columns:
+            result[col] = np.where(np.isfinite(result[col]), result[col], 0.0)
+            result[col] = np.clip(result[col], 0.0, 10.0)
         
         return result
     
@@ -177,8 +217,8 @@ class MemoryEfficientROASForecaster:
         logger.info("Evaluating model performance...")
         
         try:
-            # Limit evaluation dataset to prevent hanging
-            max_eval_samples = 2000  # Even smaller limit to prevent WebSocket timeouts
+            # Use larger evaluation dataset for better metrics
+            max_eval_samples = 10000  # Increased for better evaluation
             if len(X) > max_eval_samples:
                 logger.info(f"Large dataset detected ({len(X)} samples). Using subset for evaluation ({max_eval_samples} samples).")
                 X_eval, _, y_eval, _ = train_test_split(X, y, test_size=1-max_eval_samples/len(X), random_state=42)
@@ -190,25 +230,39 @@ class MemoryEfficientROASForecaster:
             predictions = self.predict_with_confidence(X_eval)
             y_pred = predictions['roas_prediction']
             
-            # Ensure y_eval and y_pred have the same index for comparison
-            y_eval_aligned = y_eval.reindex(predictions.index, fill_value=0)
-            y_pred_aligned = y_pred.reindex(predictions.index, fill_value=0)
+            # Ensure proper alignment by using common indices
+            common_indices = y_eval.index.intersection(predictions.index)
+            if len(common_indices) == 0:
+                logger.error("No common indices between y_eval and predictions")
+                return {'r2': 0, 'rmse': float('inf'), 'mape': float('inf'), 'mae': float('inf'), 'confidence_coverage': 0}
             
-            # Calculate metrics
-            mse = mean_squared_error(y_eval_aligned, y_pred_aligned)
+            y_eval_aligned = y_eval.loc[common_indices]
+            y_pred_aligned = y_pred.loc[common_indices]
+            
+            # Remove any NaN or infinite values
+            valid_mask = np.isfinite(y_eval_aligned) & np.isfinite(y_pred_aligned) & (y_eval_aligned > 0)
+            y_eval_clean = y_eval_aligned[valid_mask]
+            y_pred_clean = y_pred_aligned[valid_mask]
+            
+            if len(y_eval_clean) == 0:
+                logger.error("No valid data points after cleaning")
+                return {'r2': 0, 'rmse': float('inf'), 'mape': float('inf'), 'mae': float('inf'), 'confidence_coverage': 0}
+            
+            # Calculate metrics with clean data
+            mse = mean_squared_error(y_eval_clean, y_pred_clean)
             rmse = np.sqrt(mse)
-            mape = mean_absolute_percentage_error(y_eval_aligned, y_pred_aligned)
-            mae = np.mean(np.abs(y_eval_aligned - y_pred_aligned))  # Mean Absolute Error
+            mape = mean_absolute_percentage_error(y_eval_clean, y_pred_clean)
+            mae = np.mean(np.abs(y_eval_clean - y_pred_clean))  # Mean Absolute Error
             
             # R-squared
-            ss_res = np.sum((y_eval_aligned - y_pred_aligned) ** 2)
-            ss_tot = np.sum((y_eval_aligned - np.mean(y_eval_aligned)) ** 2)
+            ss_res = np.sum((y_eval_clean - y_pred_clean) ** 2)
+            ss_tot = np.sum((y_eval_clean - np.mean(y_eval_clean)) ** 2)
             r2 = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
             
             # Confidence interval coverage
-            lower_bound = predictions['roas_lower_bound']
-            upper_bound = predictions['roas_upper_bound']
-            coverage = np.mean((y_eval_aligned >= lower_bound) & (y_eval_aligned <= upper_bound))
+            lower_bound = predictions['roas_lower_bound'].loc[common_indices][valid_mask]
+            upper_bound = predictions['roas_upper_bound'].loc[common_indices][valid_mask]
+            coverage = np.mean((y_eval_clean >= lower_bound) & (y_eval_clean <= upper_bound))
             
             metrics = {
                 'r2': r2,
