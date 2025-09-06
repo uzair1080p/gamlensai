@@ -146,7 +146,7 @@ class MemoryEfficientROASForecaster:
             X = X_numeric
         
         # Limit predictions for very large datasets to prevent hanging
-        max_prediction_samples = 100000  # Limit to 100k samples for predictions
+        max_prediction_samples = 10000  # Much smaller limit to prevent WebSocket timeouts
         if len(X) > max_prediction_samples:
             logger.info(f"Large dataset detected ({len(X)} samples). Using subset for predictions ({max_prediction_samples} samples).")
             X = X.sample(n=max_prediction_samples, random_state=42)
@@ -178,7 +178,7 @@ class MemoryEfficientROASForecaster:
         
         try:
             # Limit evaluation dataset to prevent hanging
-            max_eval_samples = 50000  # Limit to 50k samples for evaluation
+            max_eval_samples = 5000  # Much smaller limit to prevent WebSocket timeouts
             if len(X) > max_eval_samples:
                 logger.info(f"Large dataset detected ({len(X)} samples). Using subset for evaluation ({max_eval_samples} samples).")
                 X_eval, _, y_eval, _ = train_test_split(X, y, test_size=1-max_eval_samples/len(X), random_state=42)
