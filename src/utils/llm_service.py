@@ -36,7 +36,8 @@ class GameLensLLMService:
             self.available = False
         else:
             try:
-                openai.api_key = self.api_key
+                # Initialize OpenAI client with new API format
+                self.client = openai.OpenAI(api_key=self.api_key)
                 self.available = True
             except Exception as e:
                 logger.error(f"Error setting up OpenAI API: {e}")
@@ -79,8 +80,8 @@ Question: {question}
 
 Please provide a helpful answer based on the context and FAQ content above."""
 
-            # Make API call
-            response = openai.ChatCompletion.create(
+            # Make API call using new OpenAI API format
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -236,7 +237,7 @@ Focus on:
 
 Keep insights concise and business-focused."""
 
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
