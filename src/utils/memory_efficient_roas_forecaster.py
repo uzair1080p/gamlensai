@@ -146,7 +146,7 @@ class MemoryEfficientROASForecaster:
             X = X_numeric
         
         # Limit predictions for very large datasets to prevent hanging
-        max_prediction_samples = 10000  # Much smaller limit to prevent WebSocket timeouts
+        max_prediction_samples = 5000  # Even smaller limit to prevent WebSocket timeouts
         if len(X) > max_prediction_samples:
             logger.info(f"Large dataset detected ({len(X)} samples). Using subset for predictions ({max_prediction_samples} samples).")
             X = X.sample(n=max_prediction_samples, random_state=42)
@@ -178,7 +178,7 @@ class MemoryEfficientROASForecaster:
         
         try:
             # Limit evaluation dataset to prevent hanging
-            max_eval_samples = 5000  # Much smaller limit to prevent WebSocket timeouts
+            max_eval_samples = 2000  # Even smaller limit to prevent WebSocket timeouts
             if len(X) > max_eval_samples:
                 logger.info(f"Large dataset detected ({len(X)} samples). Using subset for evaluation ({max_eval_samples} samples).")
                 X_eval, _, y_eval, _ = train_test_split(X, y, test_size=1-max_eval_samples/len(X), random_state=42)
@@ -190,21 +190,25 @@ class MemoryEfficientROASForecaster:
             predictions = self.predict_with_confidence(X_eval)
             y_pred = predictions['roas_prediction']
             
+            # Ensure y_eval and y_pred have the same index for comparison
+            y_eval_aligned = y_eval.reindex(predictions.index, fill_value=0)
+            y_pred_aligned = y_pred.reindex(predictions.index, fill_value=0)
+            
             # Calculate metrics
-            mse = mean_squared_error(y_eval, y_pred)
+            mse = mean_squared_error(y_eval_aligned, y_pred_aligned)
             rmse = np.sqrt(mse)
-            mape = mean_absolute_percentage_error(y_eval, y_pred)
-            mae = np.mean(np.abs(y_eval - y_pred))  # Mean Absolute Error
+            mape = mean_absolute_percentage_error(y_eval_aligned, y_pred_aligned)
+            mae = np.mean(np.abs(y_eval_aligned - y_pred_aligned))  # Mean Absolute Error
             
             # R-squared
-            ss_res = np.sum((y_eval - y_pred) ** 2)
-            ss_tot = np.sum((y_eval - np.mean(y_eval)) ** 2)
+            ss_res = np.sum((y_eval_aligned - y_pred_aligned) ** 2)
+            ss_tot = np.sum((y_eval_aligned - np.mean(y_eval_aligned)) ** 2)
             r2 = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
             
             # Confidence interval coverage
             lower_bound = predictions['roas_lower_bound']
             upper_bound = predictions['roas_upper_bound']
-            coverage = np.mean((y_eval >= lower_bound) & (y_eval <= upper_bound))
+            coverage = np.mean((y_eval_aligned >= lower_bound) & (y_eval_aligned <= upper_bound))
             
             metrics = {
                 'r2': r2,

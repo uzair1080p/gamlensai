@@ -398,14 +398,18 @@ else:
         target_day = st.session_state['target_day']
         
         # Check dataset size and warn if using subset
-        if len(X) > 10000:
-            st.info(f"📊 Large dataset detected ({len(X):,} samples). Using subset of 10,000 samples for predictions to ensure responsive performance.")
+        if len(X) > 5000:
+            st.info(f"📊 Large dataset detected ({len(X):,} samples). Using subset of 5,000 samples for predictions to ensure responsive performance.")
         
         # Make predictions with memory monitoring and timeout protection
         log_memory_usage("before predictions")
         try:
-            with st.spinner("Making predictions on dataset..."):
+            with st.spinner("Making predictions on dataset (this may take a moment)..."):
+                import time
+                start_time = time.time()
                 predictions = forecaster.predict_with_confidence(X)
+                end_time = time.time()
+                st.success(f"✅ Predictions completed in {end_time - start_time:.2f} seconds")
             log_memory_usage("after predictions")
         except Exception as e:
             st.error(f"Error making predictions: {e}")
