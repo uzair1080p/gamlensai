@@ -230,6 +230,58 @@ class MemoryEfficientROASForecaster:
             logger.error(f"Error evaluating model: {e}")
             return {'r2': 0, 'rmse': float('inf'), 'mape': float('inf'), 'mae': float('inf'), 'confidence_coverage': 0}
     
+    def generate_recommendations(self, X: pd.DataFrame, target_roas: float = 0.5, 
+                                num_recommendations: int = 10, confidence_threshold: float = 0.8) -> pd.DataFrame:
+        """Generate recommendations based on model predictions"""
+        logger.info("Generating recommendations...")
+        
+        if not self.models:
+            raise ValueError("Models not trained. Call train_model() first.")
+        
+        try:
+            # Make predictions on the dataset
+            predictions = self.predict_with_confidence(X)
+            
+            # Calculate confidence interval width
+            predictions['confidence_width'] = predictions['roas_upper_bound'] - predictions['roas_lower_bound']
+            
+            # Filter by confidence threshold (narrower confidence intervals = higher confidence)
+            max_confidence_width = predictions['confidence_width'].quantile(1 - confidence_threshold)
+            high_confidence = predictions[predictions['confidence_width'] <= max_confidence_width].copy()
+            
+            # Calculate potential ROAS improvement
+            high_confidence['roas_improvement'] = high_confidence['roas_prediction'] - target_roas
+            
+            # Sort by potential improvement (descending)
+            recommendations = high_confidence.nlargest(num_recommendations, 'roas_improvement')
+            
+            # Add recommendation reasons
+            recommendations['recommendation_reason'] = recommendations.apply(
+                lambda row: f"Predicted ROAS {row['roas_prediction']:.3f} vs target {target_roas:.3f} (improvement: {row['roas_improvement']:.3f})", 
+                axis=1
+            )
+            
+            # Select relevant columns for recommendations
+            result_columns = ['roas_prediction', 'roas_lower_bound', 'roas_upper_bound', 
+                            'confidence_width', 'roas_improvement', 'recommendation_reason']
+            
+            # Only include columns that exist
+            available_columns = [col for col in result_columns if col in recommendations.columns]
+            recommendations_result = recommendations[available_columns].copy()
+            
+            # Add index as campaign identifier if available
+            if hasattr(X, 'index'):
+                recommendations_result.index.name = 'campaign_id'
+            
+            logger.info(f"Generated {len(recommendations_result)} recommendations")
+            return recommendations_result
+            
+        except Exception as e:
+            logger.error(f"Error generating recommendations: {e}")
+            # Return empty DataFrame with expected columns
+            return pd.DataFrame(columns=['roas_prediction', 'roas_lower_bound', 'roas_upper_bound', 
+                                       'confidence_width', 'roas_improvement', 'recommendation_reason'])
+    
     def get_feature_importance(self, top_n: int = 10) -> pd.DataFrame:
         """Get feature importance as DataFrame"""
         if not self.feature_importance:
