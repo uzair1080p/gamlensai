@@ -56,17 +56,13 @@ def is_server_environment():
     except:
         return False
 
-# Only try to import LLM service if not on a problematic server
-if not is_server_environment():
-    try:
-        from utils.llm_service import GameLensLLMService
-        LLM_AVAILABLE = True
-        print("✅ LLM service loaded successfully")
-    except Exception as e:
-        print(f"⚠️ LLM service not available: {e}")
-        LLM_AVAILABLE = False
-else:
-    print("🖥️ Server environment detected - skipping LLM import to avoid Bus error")
+# Try to import LLM service with enhanced error handling
+try:
+    from utils.llm_service import GameLensLLMService
+    LLM_AVAILABLE = True
+    print("✅ LLM service loaded successfully")
+except Exception as e:
+    print(f"⚠️ LLM service not available: {e}")
     LLM_AVAILABLE = False
 
 # Page configuration
@@ -655,12 +651,9 @@ else:
         
         # Check if LLM is available
         if not llm_service or not llm_service.is_available():
-            if is_server_environment():
-                st.info("🖥️ **Server Mode**: LLM service disabled to prevent Bus errors. Using intelligent fallback FAQ system.")
-                st.success("✅ The fallback system provides comprehensive answers based on your data and model performance.")
-            else:
-                st.warning("⚠️ LLM service not available. Using fallback FAQ system.")
-                st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key\n3. Install correct openai version: `pip install openai==1.93.0`\n4. Restart the application")
+            st.warning("⚠️ LLM service not available. Using intelligent fallback FAQ system.")
+            st.info("💡 To enable LLM-powered FAQ answers:\n1. Copy `env.example` to `.env`\n2. Add your OpenAI API key: `OPENAI_API_KEY=your_key_here`\n3. Restart the application")
+            st.success("✅ The fallback system provides comprehensive answers based on your data and model performance.")
         
         # Pull objects from session if available
         combined_data = st.session_state.get('combined_data')
@@ -761,11 +754,29 @@ else:
                 "What insights can you provide about our advertising data?",
             ]
 
-        # LLM-powered answer function
+        # LLM-powered answer function with enhanced context
         def answer_question_with_llm(q: str) -> str:
             if llm_service and llm_service.is_available():
                 try:
-                    return llm_service.answer_faq_question(q, kpis, content or "")
+                    # Add additional context for better LLM responses
+                    enhanced_kpis = kpis.copy()
+                    
+                    # Add current session state information
+                    if 'target_day' in st.session_state:
+                        enhanced_kpis['target_day'] = st.session_state['target_day']
+                    
+                    if 'model_params' in st.session_state:
+                        enhanced_kpis['model_params'] = st.session_state['model_params']
+                    
+                    # Add data summary
+                    if combined_data:
+                        enhanced_kpis['data_summary'] = {
+                            'total_records': sum(len(df) for df in combined_data.values() if df is not None),
+                            'platforms': list(set().union(*[df['platform'].unique() for df in combined_data.values() if df is not None and 'platform' in df.columns])),
+                            'date_range': f"{min(df['date'].min() for df in combined_data.values() if df is not None and 'date' in df.columns)} to {max(df['date'].max() for df in combined_data.values() if df is not None and 'date' in df.columns)}"
+                        }
+                    
+                    return llm_service.answer_faq_question(q, enhanced_kpis, content or "")
                 except Exception as e:
                     st.error(f"Error generating LLM answer: {e}")
                     return answer_question_simple(q, kpis)
