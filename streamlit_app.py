@@ -699,6 +699,14 @@ else:
                     all_data_df = pd.concat(dfs, ignore_index=True, sort=False)
             except Exception:
                 all_data_df = None
+        # Fallbacks when the raw combined_data is not available
+        if all_data_df is None or (hasattr(all_data_df, "empty") and all_data_df.empty):
+            if features_df is not None and not features_df.empty:
+                all_data_df = features_df.copy()
+            elif 'predictions' in st.session_state:
+                preds_df = st.session_state.get('predictions')
+                if preds_df is not None and not preds_df.empty:
+                    all_data_df = preds_df.copy()
 
         # Helper to get the first existing column from a list
         def first_existing_column(df: pd.DataFrame, candidates):
@@ -709,9 +717,17 @@ else:
                     return c
             return None
 
-        platform_col = first_existing_column(all_data_df, ["platform", "source", "network"])
-        campaign_col = first_existing_column(all_data_df, ["campaign", "campaign_id", "adset", "adset_id", "line_item", "adgroup"])
-        geo_col = first_existing_column(all_data_df, ["geo", "country", "country_code", "region"])
+        platform_col = first_existing_column(all_data_df, [
+            "platform", "source", "network", "channel"
+        ])
+        campaign_col = first_existing_column(all_data_df, [
+            "campaign", "campaign_id", "campaign_name",
+            "adset", "adset_id", "adset_name",
+            "line_item", "adgroup", "adgroup_id", "adgroup_name"
+        ])
+        geo_col = first_existing_column(all_data_df, [
+            "geo", "country", "country_code", "country_iso", "country_name", "region"
+        ])
 
         with st.expander("Filter scope for FAQ answers (optional)", expanded=True):
             col_f1, col_f2, col_f3 = st.columns(3)
@@ -719,13 +735,13 @@ else:
             selected_campaign = None
             selected_geo = None
 
-            if platform_col and all_data_df is not None:
+            if platform_col and all_data_df is not None and platform_col in all_data_df.columns:
                 options = ["All"] + sorted([str(x) for x in all_data_df[platform_col].dropna().unique()])
                 selected_platform = col_f1.selectbox("Platform", options, index=0)
                 if selected_platform == "All":
                     selected_platform = None
 
-            if campaign_col and all_data_df is not None:
+            if campaign_col and all_data_df is not None and campaign_col in all_data_df.columns:
                 # Reduce campaign options based on selected platform if both exist
                 df_opts = all_data_df.copy()
                 if selected_platform is not None and platform_col in df_opts.columns:
@@ -735,11 +751,14 @@ else:
                 if selected_campaign == "All":
                     selected_campaign = None
 
-            if geo_col and all_data_df is not None:
+            if geo_col and all_data_df is not None and geo_col in all_data_df.columns:
                 geo_options = ["All"] + sorted([str(x) for x in all_data_df[geo_col].dropna().unique()])
                 selected_geo = col_f3.selectbox("Geo", geo_options, index=0)
                 if selected_geo == "All":
                     selected_geo = None
+            
+            if not any([platform_col, campaign_col, geo_col]):
+                st.info("No filterable metadata (platform/campaign/geo) found in loaded data.")
 
         # Helper to apply the selected scope to any dataframe
         def apply_scope(df: pd.DataFrame) -> pd.DataFrame:
