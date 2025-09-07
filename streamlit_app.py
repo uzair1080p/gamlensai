@@ -688,6 +688,81 @@ else:
         target_col = st.session_state.get('target_col')
         target_day = st.session_state.get('target_day')
 
+        # --- Campaign-aware filtering controls ---
+        # Build a unified dataframe (if available) to drive filter options
+        import pandas as pd
+        all_data_df = None
+        if combined_data and isinstance(combined_data, dict):
+            try:
+                dfs = [df for df in combined_data.values() if df is not None and not df.empty]
+                if dfs:
+                    all_data_df = pd.concat(dfs, ignore_index=True, sort=False)
+            except Exception:
+                all_data_df = None
+
+        # Helper to get the first existing column from a list
+        def first_existing_column(df: pd.DataFrame, candidates):
+            if df is None:
+                return None
+            for c in candidates:
+                if c in df.columns:
+                    return c
+            return None
+
+        platform_col = first_existing_column(all_data_df, ["platform", "source", "network"])
+        campaign_col = first_existing_column(all_data_df, ["campaign", "campaign_id", "adset", "adset_id", "line_item", "adgroup"])
+        geo_col = first_existing_column(all_data_df, ["geo", "country", "country_code", "region"])
+
+        with st.expander("Filter scope for FAQ answers (optional)", expanded=True):
+            col_f1, col_f2, col_f3 = st.columns(3)
+            selected_platform = None
+            selected_campaign = None
+            selected_geo = None
+
+            if platform_col and all_data_df is not None:
+                options = ["All"] + sorted([str(x) for x in all_data_df[platform_col].dropna().unique()])
+                selected_platform = col_f1.selectbox("Platform", options, index=0)
+                if selected_platform == "All":
+                    selected_platform = None
+
+            if campaign_col and all_data_df is not None:
+                # Reduce campaign options based on selected platform if both exist
+                df_opts = all_data_df.copy()
+                if selected_platform is not None and platform_col in df_opts.columns:
+                    df_opts = df_opts[df_opts[platform_col] == selected_platform]
+                camp_options = ["All"] + sorted([str(x) for x in df_opts[campaign_col].dropna().unique()])
+                selected_campaign = col_f2.selectbox("Campaign", camp_options, index=0)
+                if selected_campaign == "All":
+                    selected_campaign = None
+
+            if geo_col and all_data_df is not None:
+                geo_options = ["All"] + sorted([str(x) for x in all_data_df[geo_col].dropna().unique()])
+                selected_geo = col_f3.selectbox("Geo", geo_options, index=0)
+                if selected_geo == "All":
+                    selected_geo = None
+
+        # Helper to apply the selected scope to any dataframe
+        def apply_scope(df: pd.DataFrame) -> pd.DataFrame:
+            if df is None or df is None or (hasattr(df, "empty") and df.empty):
+                return df
+            scoped = df
+            try:
+                if selected_platform is not None:
+                    col_name = first_existing_column(scoped, [platform_col, "platform", "source", "network"]) or ""
+                    if col_name in scoped.columns:
+                        scoped = scoped[scoped[col_name] == selected_platform]
+                if selected_campaign is not None:
+                    col_name = first_existing_column(scoped, [campaign_col, "campaign", "campaign_id", "adset", "adset_id", "line_item", "adgroup"]) or ""
+                    if col_name in scoped.columns:
+                        scoped = scoped[scoped[col_name] == selected_campaign]
+                if selected_geo is not None:
+                    col_name = first_existing_column(scoped, [geo_col, "geo", "country", "country_code", "region"]) or ""
+                    if col_name in scoped.columns:
+                        scoped = scoped[scoped[col_name] == selected_geo]
+                return scoped
+            except Exception:
+                return df
+
         # Helper: compute KPIs used across answers
         def compute_kpis():
             kpis = {}
@@ -702,17 +777,19 @@ else:
                                 platform_counts[k] = platform_counts.get(k, 0) + int(v)
                     kpis['platform_counts'] = platform_counts
 
-                # Model metrics
-                if forecaster is not None and X is not None and y is not None:
+                # Model metrics (scoped by selected filters when possible)
+                X_scoped = apply_scope(X) if X is not None else None
+                y_scoped = y.loc[X_scoped.index] if (X_scoped is not None and y is not None and hasattr(y, 'loc')) else y
+                if forecaster is not None and X_scoped is not None and y_scoped is not None and len(X_scoped) > 0:
                     try:
-                        metrics = forecaster.evaluate_model(X, y)
+                        metrics = forecaster.evaluate_model(X_scoped, y_scoped)
                     except Exception:
                         metrics = getattr(forecaster, 'performance_metrics', {}) or {}
                     kpis['metrics'] = metrics
 
                     # Predictions summary
                     try:
-                        preds = forecaster.predict_with_confidence(X)
+                        preds = forecaster.predict_with_confidence(X_scoped)
                         kpis['predictions'] = preds
                         kpis['pred_summary'] = {
                             'mean': float(preds['roas_prediction'].mean()),
@@ -732,17 +809,18 @@ else:
                         kpis['top_features'] = []
 
                     # Best platform by actual target if available
-                    if features_df is not None and target_col in features_df.columns:
-                        if 'platform' in features_df.columns:
-                            by_plat = features_df[[target_col, 'platform']].dropna()
+                    features_scoped = apply_scope(features_df) if features_df is not None else None
+                    if features_scoped is not None and target_col in features_scoped.columns:
+                        if 'platform' in features_scoped.columns:
+                            by_plat = features_scoped[[target_col, 'platform']].dropna()
                             if not by_plat.empty:
                                 agg = by_plat.groupby('platform')[target_col].mean().sort_values(ascending=False)
                                 kpis['best_platform'] = str(agg.index[0])
 
                 # Generate recommendations
-                if forecaster is not None and X is not None:
+                if forecaster is not None and X_scoped is not None and len(X_scoped) > 0:
                     try:
-                        recs = forecaster.generate_recommendations(X, y, target_roas=1.0)
+                        recs = forecaster.generate_recommendations(X_scoped, target_roas=1.0)
                         kpis['recommendations'] = recs
                     except Exception:
                         kpis['recommendations'] = None
@@ -828,7 +906,7 @@ else:
         else:
             st.success(f"📋 Found {len(questions)} questions in your FAQ document")
 
-        # LLM-powered answer function with enhanced context
+        # LLM-powered answer function with enhanced context and scope
         def answer_question_with_llm(q: str) -> str:
             if llm_service and llm_service.is_available():
                 try:
@@ -842,12 +920,20 @@ else:
                     if 'model_params' in st.session_state:
                         enhanced_kpis['model_params'] = st.session_state['model_params']
                     
-                    # Add data summary
-                    if combined_data:
+                    # Add scope information for campaign-aware answers
+                    enhanced_kpis['scope'] = {
+                        'platform': selected_platform or 'All',
+                        'campaign': selected_campaign or 'All',
+                        'geo': selected_geo or 'All',
+                    }
+
+                    # Add data summary (scoped)
+                    if all_data_df is not None:
+                        scoped_df = apply_scope(all_data_df)
                         enhanced_kpis['data_summary'] = {
-                            'total_records': sum(len(df) for df in combined_data.values() if df is not None),
-                            'platforms': list(set().union(*[df['platform'].unique() for df in combined_data.values() if df is not None and 'platform' in df.columns])),
-                            'date_range': f"{min(df['date'].min() for df in combined_data.values() if df is not None and 'date' in df.columns)} to {max(df['date'].max() for df in combined_data.values() if df is not None and 'date' in df.columns)}"
+                            'total_records': int(len(scoped_df)) if scoped_df is not None else 0,
+                            'platforms': list(sorted(scoped_df[platform_col].dropna().unique())) if (scoped_df is not None and platform_col in scoped_df.columns) else [],
+                            'date_range': f"{scoped_df['date'].min()} to {scoped_df['date'].max()}" if (scoped_df is not None and 'date' in scoped_df.columns and not scoped_df.empty) else 'Unknown'
                         }
                     
                     return llm_service.answer_faq_question(q, enhanced_kpis, content or "")
