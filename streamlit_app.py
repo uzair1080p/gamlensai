@@ -832,10 +832,10 @@ else:
         chan_col = next((c for c in ['channel', 'network'] if c in df_val.columns), None)
         country_col = next((c for c in ['country', 'geo', 'country_code', 'country_name', 'region'] if c in df_val.columns), None)
 
-        selected_game = c1.selectbox("Game", ["All"] + sorted(df_val[game_col].dropna().unique().tolist()) if game_col else ["All"])
-        selected_platform = c2.selectbox("Platform", ["All"] + sorted(df_val[plat_col].dropna().unique().tolist()) if plat_col else ["All"])
-        selected_channel = c3.selectbox("Channel", ["All"] + sorted(df_val[chan_col].dropna().unique().tolist()) if chan_col else ["All"])
-        selected_country = c4.selectbox("Countries", ["All"] + sorted(df_val[country_col].dropna().unique().tolist()) if country_col else ["All"])
+        selected_game = c1.selectbox("Game", ["All"] + sorted([str(x) for x in df_val[game_col].dropna().unique()]) if game_col else ["All"])
+        selected_platform = c2.selectbox("Platform", ["All"] + sorted([str(x) for x in df_val[plat_col].dropna().unique()]) if plat_col else ["All"])
+        selected_channel = c3.selectbox("Channel", ["All"] + sorted([str(x) for x in df_val[chan_col].dropna().unique()]) if chan_col else ["All"])
+        selected_country = c4.selectbox("Countries", ["All"] + sorted([str(x) for x in df_val[country_col].dropna().unique()]) if country_col else ["All"])
 
         scoped = df_val.copy()
         if game_col and selected_game != "All":
