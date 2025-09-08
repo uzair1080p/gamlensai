@@ -598,6 +598,186 @@ else:
                 except Exception as e:
                     st.error(f"Error generating recommendations: {e}")
 
+    def show_data_ingestion():
+        """Upload Excel/CSV, preview, store on server, and optionally ask GPT to interpret schema."""
+        st.header("📥 Data Ingestion")
+        st.info("Upload .xlsx or .csv files. We'll store them under data/raw/ and make them available for training.")
+
+        # Destination directories
+        raw_dir = os.path.join("data", "raw")
+        os.makedirs(raw_dir, exist_ok=True)
+
+        uploaded_files = st.file_uploader(
+            "Upload one or more files",
+            type=["xlsx", "xls", "csv"],
+            accept_multiple_files=True
+        )
+
+        if uploaded_files:
+            for up in uploaded_files:
+                try:
+                    # Save to disk
+                    save_path = os.path.join(raw_dir, up.name)
+                    with open(save_path, "wb") as f:
+                        f.write(up.getbuffer())
+
+                    st.success(f"Saved: {save_path}")
+
+                    # Read a small preview
+                    preview_df = None
+                    if up.name.lower().endswith((".xlsx", ".xls")):
+                        try:
+                            # Read first sheet for preview
+                            preview_df = pd.read_excel(save_path, nrows=200)
+                        except Exception:
+                            preview_df = None
+                    elif up.name.lower().endswith(".csv"):
+                        try:
+                            preview_df = pd.read_csv(save_path, nrows=200)
+                        except Exception:
+                            preview_df = None
+
+                    if preview_df is not None and not preview_df.empty:
+                        st.subheader(f"Preview: {up.name}")
+                        st.dataframe(preview_df.head(20), use_container_width=True)
+
+                        # Quick heuristics for column categories
+                        col_names = [str(c) for c in preview_df.columns]
+                        st.caption("Detected columns: " + ", ".join(col_names))
+
+                        # Optional: Ask GPT to interpret schema and suggest mappings
+                        if LLM_AVAILABLE and GameLensLLMService:
+                            if st.checkbox(f"Ask GPT to interpret data schema for {up.name}"):
+                                try:
+                                    llm = GameLensLLMService()
+                                    if llm and llm.is_available():
+                                        sample_json = preview_df.head(10).to_json(orient="records")
+                                        question = (
+                                            "Given this tabular data preview, identify likely columns for: "
+                                            "date, game, platform, channel, country, spend, revenue, installs, "
+                                            "ROAS day columns (e.g., roas_d1, roas_d7, roas_d30), retention. "
+                                            "Also suggest which of these four filters we can support: Game, Platform, Channel, Countries."
+                                        )
+                                        context = {"columns": col_names, "sample": sample_json}
+                                        answer = llm.answer_faq_question(question, context, faq_content="")
+                                        st.write(answer)
+                                    else:
+                                        st.warning("LLM not available. Configure OPENAI_API_KEY to enable GPT interpretation.")
+                                except Exception as e:
+                                    st.warning(f"LLM interpretation failed: {e}")
+
+                    else:
+                        st.warning(f"Could not preview {up.name}. File saved; please ensure it is a valid spreadsheet.")
+                except Exception as e:
+                    st.error(f"Upload/save failed for {up.name}: {e}")
+
+            st.success("Files uploaded. They will be picked up on next data load.")
+
+            if st.button("Reload data now", type="primary"):
+                # Clear caches and rerun to include new data in the pipeline
+                load_data.clear()
+                create_features.clear()
+                st.success("Data caches cleared. Reloading...")
+                st.rerun()
+
+    def show_validation():
+        """Validate predictions against historical actuals with group filters."""
+        st.header("✅ Predictions Validation")
+
+        if 'forecaster' not in st.session_state:
+            st.warning("Train a model first in the Model Training tab.")
+            return
+
+        forecaster = st.session_state['forecaster']
+        X = st.session_state.get('X')
+        y = st.session_state.get('y')
+
+        if X is None or y is None:
+            st.warning("No training data found in session. Please re-train the model.")
+            return
+
+        # Get predictions
+        try:
+            preds = forecaster.predict_with_confidence(X)
+        except Exception as e:
+            st.error(f"Prediction failed: {e}")
+            return
+
+        # Merge predictions and actuals
+        df_val = pd.DataFrame(index=X.index).copy()
+        df_val['predicted_roas'] = preds['roas_prediction']
+        df_val['actual_roas'] = y
+        df_val['abs_error'] = (df_val['actual_roas'] - df_val['predicted_roas']).abs()
+        df_val['ape'] = ((df_val['actual_roas'] - df_val['predicted_roas']).abs() / df_val['actual_roas'].replace(0, np.nan)).clip(upper=10)
+
+        # Attach available metadata columns from X if present
+        possible_meta = [
+            'game', 'title', 'app',
+            'platform', 'source', 'network', 'channel',
+            'country', 'geo', 'country_code', 'country_name', 'region'
+        ]
+        present_meta = [c for c in possible_meta if c in X.columns]
+        meta_df = X[present_meta] if present_meta else pd.DataFrame(index=X.index)
+        df_val = df_val.join(meta_df, how='left')
+
+        # Filters: Game, Platform, Channel, Countries
+        st.subheader("Filters")
+        c1, c2, c3, c4 = st.columns(4)
+        game_col = next((c for c in ['game', 'title', 'app'] if c in df_val.columns), None)
+        plat_col = next((c for c in ['platform', 'source', 'network'] if c in df_val.columns), None)
+        chan_col = next((c for c in ['channel', 'network'] if c in df_val.columns), None)
+        country_col = next((c for c in ['country', 'geo', 'country_code', 'country_name', 'region'] if c in df_val.columns), None)
+
+        selected_game = c1.selectbox("Game", ["All"] + sorted(df_val[game_col].dropna().unique().tolist()) if game_col else ["All"])
+        selected_platform = c2.selectbox("Platform", ["All"] + sorted(df_val[plat_col].dropna().unique().tolist()) if plat_col else ["All"])
+        selected_channel = c3.selectbox("Channel", ["All"] + sorted(df_val[chan_col].dropna().unique().tolist()) if chan_col else ["All"])
+        selected_country = c4.selectbox("Countries", ["All"] + sorted(df_val[country_col].dropna().unique().tolist()) if country_col else ["All"])
+
+        scoped = df_val.copy()
+        if game_col and selected_game != "All":
+            scoped = scoped[scoped[game_col] == selected_game]
+        if plat_col and selected_platform != "All":
+            scoped = scoped[scoped[plat_col] == selected_platform]
+        if chan_col and selected_channel != "All":
+            scoped = scoped[scoped[chan_col] == selected_channel]
+        if country_col and selected_country != "All":
+            scoped = scoped[scoped[country_col] == selected_country]
+
+        # KPIs
+        st.subheader("Validation Metrics")
+        if len(scoped) == 0:
+            st.warning("No data after filters.")
+            return
+
+        r2 = forecaster.performance_metrics.get('r2') if hasattr(forecaster, 'performance_metrics') else None
+        mape = np.nanmean(scoped['ape']) if 'ape' in scoped else np.nan
+        mae = np.nanmean(scoped['abs_error']) if 'abs_error' in scoped else np.nan
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("MAPE", f"{mape:.4f}")
+        m2.metric("MAE", f"{mae:.4f}")
+        m3.metric("R² (global)", f"{(r2 if r2 is not None else 0):.4f}")
+
+        # Plots
+        c1, c2 = st.columns(2)
+        with c1:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=scoped['actual_roas'], y=scoped['predicted_roas'], mode='markers', name='Points'))
+            if scoped['actual_roas'].notna().any() and scoped['predicted_roas'].notna().any():
+                mn = float(min(scoped['actual_roas'].min(), scoped['predicted_roas'].min()))
+                mx = float(max(scoped['actual_roas'].max(), scoped['predicted_roas'].max()))
+                fig.add_trace(go.Scatter(x=[mn, mx], y=[mn, mx], mode='lines', name='Ideal', line=dict(dash='dash', color='red')))
+            fig.update_layout(title='Actual vs Predicted ROAS', xaxis_title='Actual', yaxis_title='Predicted')
+            st.plotly_chart(fig, use_container_width=True)
+        with c2:
+            fig2 = px.histogram(scoped, x='abs_error', nbins=30, title='Absolute Error Distribution')
+            st.plotly_chart(fig2, use_container_width=True)
+
+        st.subheader("Detailed Table")
+        st.dataframe(scoped.head(500), use_container_width=True)
+        csv = scoped.to_csv(index=False)
+        st.download_button("Download validation CSV", data=csv, file_name="validation_scoped.csv", mime="text/csv")
+
     def _read_faq_content() -> Optional[str]:
         """Read FAQ content from common locations and formats.
 
@@ -730,35 +910,44 @@ else:
         ])
 
         with st.expander("Filter scope for FAQ answers (optional)", expanded=True):
-            col_f1, col_f2, col_f3 = st.columns(3)
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            selected_game = None
             selected_platform = None
-            selected_campaign = None
-            selected_geo = None
+            selected_channel = None
+            selected_country = None
+
+            # Map columns
+            game_col = first_existing_column(all_data_df, ["game", "title", "app"])
+            platform_col = first_existing_column(all_data_df, ["platform", "source", "network", "channel"]) or platform_col
+            channel_col = first_existing_column(all_data_df, ["channel", "network"]) or None
+            country_col = first_existing_column(all_data_df, ["country", "geo", "country_code", "country_name", "region"]) or geo_col
+
+            if game_col and all_data_df is not None and game_col in all_data_df.columns:
+                options = ["All"] + sorted([str(x) for x in all_data_df[game_col].dropna().unique()])
+                selected_game = col_f1.selectbox("Game", options, index=0)
+                if selected_game == "All":
+                    selected_game = None
 
             if platform_col and all_data_df is not None and platform_col in all_data_df.columns:
                 options = ["All"] + sorted([str(x) for x in all_data_df[platform_col].dropna().unique()])
-                selected_platform = col_f1.selectbox("Platform", options, index=0)
+                selected_platform = col_f2.selectbox("Platform", options, index=0)
                 if selected_platform == "All":
                     selected_platform = None
 
-            if campaign_col and all_data_df is not None and campaign_col in all_data_df.columns:
-                # Reduce campaign options based on selected platform if both exist
-                df_opts = all_data_df.copy()
-                if selected_platform is not None and platform_col in df_opts.columns:
-                    df_opts = df_opts[df_opts[platform_col] == selected_platform]
-                camp_options = ["All"] + sorted([str(x) for x in df_opts[campaign_col].dropna().unique()])
-                selected_campaign = col_f2.selectbox("Campaign", camp_options, index=0)
-                if selected_campaign == "All":
-                    selected_campaign = None
+            if channel_col and all_data_df is not None and channel_col in all_data_df.columns:
+                options = ["All"] + sorted([str(x) for x in all_data_df[channel_col].dropna().unique()])
+                selected_channel = col_f3.selectbox("Channel", options, index=0)
+                if selected_channel == "All":
+                    selected_channel = None
 
-            if geo_col and all_data_df is not None and geo_col in all_data_df.columns:
-                geo_options = ["All"] + sorted([str(x) for x in all_data_df[geo_col].dropna().unique()])
-                selected_geo = col_f3.selectbox("Geo", geo_options, index=0)
-                if selected_geo == "All":
-                    selected_geo = None
-            
-            if not any([platform_col, campaign_col, geo_col]):
-                st.info("No filterable metadata (platform/campaign/geo) found in loaded data.")
+            if country_col and all_data_df is not None and country_col in all_data_df.columns:
+                options = ["All"] + sorted([str(x) for x in all_data_df[country_col].dropna().unique()])
+                selected_country = col_f4.selectbox("Countries", options, index=0)
+                if selected_country == "All":
+                    selected_country = None
+
+            if not any([game_col, platform_col, channel_col, country_col]):
+                st.info("No filterable metadata (game/platform/channel/country) found in loaded data.")
 
         # Helper to apply the selected scope to any dataframe
         def apply_scope(df: pd.DataFrame) -> pd.DataFrame:
@@ -766,18 +955,22 @@ else:
                 return df
             scoped = df
             try:
+                if selected_game is not None:
+                    col_name = first_existing_column(scoped, [game_col, "game", "title", "app"]) or ""
+                    if col_name in scoped.columns:
+                        scoped = scoped[scoped[col_name] == selected_game]
                 if selected_platform is not None:
                     col_name = first_existing_column(scoped, [platform_col, "platform", "source", "network"]) or ""
                     if col_name in scoped.columns:
                         scoped = scoped[scoped[col_name] == selected_platform]
-                if selected_campaign is not None:
-                    col_name = first_existing_column(scoped, [campaign_col, "campaign", "campaign_id", "adset", "adset_id", "line_item", "adgroup"]) or ""
+                if selected_channel is not None:
+                    col_name = first_existing_column(scoped, [channel_col, "channel", "network"]) or ""
                     if col_name in scoped.columns:
-                        scoped = scoped[scoped[col_name] == selected_campaign]
-                if selected_geo is not None:
-                    col_name = first_existing_column(scoped, [geo_col, "geo", "country", "country_code", "region"]) or ""
+                        scoped = scoped[scoped[col_name] == selected_channel]
+                if selected_country is not None:
+                    col_name = first_existing_column(scoped, [country_col, geo_col, "geo", "country", "country_code", "region"]) or ""
                     if col_name in scoped.columns:
-                        scoped = scoped[scoped[col_name] == selected_geo]
+                        scoped = scoped[scoped[col_name] == selected_country]
                 return scoped
             except Exception:
                 return df
@@ -941,9 +1134,10 @@ else:
                     
                     # Add scope information for campaign-aware answers
                     enhanced_kpis['scope'] = {
+                        'game': selected_game or 'All',
                         'platform': selected_platform or 'All',
-                        'campaign': selected_campaign or 'All',
-                        'geo': selected_geo or 'All',
+                        'channel': selected_channel or 'All',
+                        'country': selected_country or 'All',
                     }
 
                     # Add data summary (scoped)
@@ -1051,7 +1245,7 @@ else:
         st.sidebar.title("Navigation")
         page = st.sidebar.selectbox(
             "Choose a page",
-            ["Data Overview", "Feature Engineering", "Model Training", "Predictions", "Recommendations", "FAQ"]
+            ["Data Overview", "Feature Engineering", "Model Training", "Predictions", "Validation", "Recommendations", "Data Ingestion", "FAQ"]
         )
         
         # Load data
@@ -1073,8 +1267,12 @@ else:
             show_model_training(features_df)
         elif page == "Predictions":
             show_predictions()
+        elif page == "Validation":
+            show_validation()
         elif page == "Recommendations":
             show_recommendations()
+        elif page == "Data Ingestion":
+            show_data_ingestion()
         elif page == "FAQ":
             show_faq()
         
