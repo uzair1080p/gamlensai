@@ -353,9 +353,32 @@ else:
                         st.error("No valid data for training after removing missing targets.")
                         return
                     
-                    # Prepare features and target
+                    # Prepare features and target (prevent data leakage)
                     exclude_cols = ['platform', 'subdirectory', 'data_type', target_col]
-                    feature_cols = [col for col in valid_data.columns if col not in exclude_cols]
+                    candidate_cols = [col for col in valid_data.columns if col not in exclude_cols]
+
+                    def is_future_signal(col: str) -> bool:
+                        try:
+                            # ROAS features: only allow strictly earlier than target
+                            if 'roas_d' in col:
+                                m = re.search(r'roas_d(\d+)', col)
+                                if m:
+                                    return int(m.group(1)) >= target_day
+                            # Retention features: only allow < target_day
+                            if 'retention_' in col:
+                                m = re.search(r'retention.*?(\d+)', col)
+                                if m:
+                                    return int(m.group(1)) >= target_day
+                            # Level features often end with numbers or have early_ prefix
+                            if 'level' in col:
+                                m = re.search(r'(?:level[^\d]*)(\d+)$', col)
+                                if m:
+                                    return int(m.group(1)) >= target_day
+                            return False
+                        except Exception:
+                            return False
+
+                    feature_cols = [c for c in candidate_cols if not is_future_signal(c)]
                     
                     X = valid_data[feature_cols].fillna(0)
                     y = valid_data[target_col]
@@ -382,6 +405,13 @@ else:
                     st.session_state['feature_cols'] = feature_cols
                     st.session_state['target_col'] = target_col
                     st.session_state['target_day'] = target_day
+                    st.session_state['model_params'] = {
+                        'n_estimators': n_estimators,
+                        'learning_rate': learning_rate,
+                        'max_depth': max_depth,
+                        'cv_folds': cv_folds,
+                        'test_size': test_size,
+                    }
                     
                     st.success(f"✅ Model trained successfully! Target: D{target_day} ROAS")
                     
