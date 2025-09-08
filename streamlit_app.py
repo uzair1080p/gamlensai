@@ -1250,6 +1250,8 @@ else:
         
         # Load data
         combined_data, data_loader = load_data()
+        # Persist for cross-page access (e.g., FAQ filters)
+        st.session_state['combined_data'] = combined_data
         
         if combined_data is None:
             st.error("Failed to load data. Please check your data directory.")
@@ -1257,6 +1259,8 @@ else:
         
         # Create features
         features_df, feature_engineer = create_features(combined_data)
+        # Persist for cross-page access (e.g., FAQ filters)
+        st.session_state['features_df'] = features_df
         
         # Page routing
         if page == "Data Overview":
