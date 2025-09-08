@@ -244,6 +244,20 @@ else:
             quality_df = pd.DataFrame(quality_metrics)
             st.dataframe(quality_df, use_container_width=True)
 
+        # Level progression quick analytics
+        if 'level_progression' in combined_data and not combined_data['level_progression'].empty:
+            st.subheader("Level Progression Snapshot")
+            lvl_df = combined_data['level_progression']
+            # Heuristics: find level columns
+            level_cols = [c for c in lvl_df.columns if str(c).lower().startswith('level')]
+            if level_cols:
+                # Compute simple summary
+                summary = {
+                    'rows': len(lvl_df),
+                    'level_columns': len(level_cols)
+                }
+                st.write(summary)
+
     def show_feature_engineering(features_df, feature_engineer):
         """Display feature engineering results"""
         st.header("🔧 Feature Engineering")
@@ -597,6 +611,66 @@ else:
                     
                 except Exception as e:
                     st.error(f"Error generating recommendations: {e}")
+
+    def show_level_progression(combined_data):
+        """Analytics focused on level progression quality by channel/platform/game."""
+        st.header("🧩 Level Progression Analytics")
+        lvl_df = combined_data.get('level_progression') if isinstance(combined_data, dict) else None
+        if lvl_df is None or lvl_df.empty:
+            st.info("No level progression data loaded.")
+            return
+
+        # Identify columns
+        meta_cols = ['platform', 'channel', 'network', 'source', 'game', 'title', 'app', 'country', 'geo']
+        meta_cols = [c for c in meta_cols if c in lvl_df.columns]
+        level_cols = [c for c in lvl_df.columns if str(c).lower().startswith('level')]
+
+        if not level_cols:
+            st.warning("No level columns detected (columns starting with 'level').")
+            st.dataframe(lvl_df.head(50), use_container_width=True)
+            return
+
+        # Filters
+        c1, c2, c3 = st.columns(3)
+        game_col = next((c for c in ['game', 'title', 'app'] if c in lvl_df.columns), None)
+        plat_col = next((c for c in ['platform', 'source', 'network'] if c in lvl_df.columns), None)
+        chan_col = next((c for c in ['channel', 'network'] if c in lvl_df.columns), None)
+        sel_game = c1.selectbox("Game", ["All"] + sorted(lvl_df[game_col].dropna().unique().tolist()) if game_col else ["All"])
+        sel_plat = c2.selectbox("Platform", ["All"] + sorted(lvl_df[plat_col].dropna().unique().tolist()) if plat_col else ["All"])
+        sel_chan = c3.selectbox("Channel", ["All"] + sorted(lvl_df[chan_col].dropna().unique().tolist()) if chan_col else ["All"])
+
+        scoped = lvl_df.copy()
+        if game_col and sel_game != "All":
+            scoped = scoped[scoped[game_col] == sel_game]
+        if plat_col and sel_plat != "All":
+            scoped = scoped[scoped[plat_col] == sel_plat]
+        if chan_col and sel_chan != "All":
+            scoped = scoped[scoped[chan_col] == sel_chan]
+
+        # Compute max level achieved row-wise and drop-off curve
+        import numpy as np
+        level_array = scoped[level_cols].replace([np.inf, -np.inf], np.nan)
+        max_level = level_array.apply(lambda r: r.last_valid_index(), axis=1)
+        # last_valid_index returns column name; transform to numeric order index
+        lvl_order = {name: idx for idx, name in enumerate(level_cols, start=1)}
+        max_level_num = max_level.map(lambda c: lvl_order.get(c, 0))
+
+        st.subheader("Quality KPIs")
+        k1, k2 = st.columns(2)
+        k1.metric("Median Max Level", f"{int(np.nanmedian(max_level_num))}")
+        k2.metric("95th Percentile Max Level", f"{int(np.nanpercentile(max_level_num.dropna(), 95)) if max_level_num.notna().any() else 0}")
+
+        # Drop-off curve: percentage of users reaching each level
+        reach_pct = {}
+        total = len(scoped)
+        for i, col in enumerate(level_cols, start=1):
+            reach_pct[col] = float(scoped[col].notna().sum()) / total if total > 0 else 0.0
+        drop_df = pd.DataFrame({"level": list(reach_pct.keys()), "reach_pct": list(reach_pct.values())})
+        fig = px.line(drop_df, x="level", y="reach_pct", title="Level Reach Percentage (Drop-off)")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Sample Records")
+        st.dataframe(scoped.head(200), use_container_width=True)
 
     def show_data_ingestion():
         """Upload Excel/CSV, preview, store on server, and optionally ask GPT to interpret schema."""
@@ -1245,7 +1319,7 @@ else:
         st.sidebar.title("Navigation")
         page = st.sidebar.selectbox(
             "Choose a page",
-            ["Data Overview", "Feature Engineering", "Model Training", "Predictions", "Validation", "Recommendations", "Data Ingestion", "FAQ"]
+            ["Data Overview", "Feature Engineering", "Model Training", "Predictions", "Validation", "Level Progression", "Recommendations", "Data Ingestion", "FAQ"]
         )
         
         # Load data
@@ -1275,6 +1349,8 @@ else:
             show_validation()
         elif page == "Recommendations":
             show_recommendations()
+        elif page == "Level Progression":
+            show_level_progression(combined_data)
         elif page == "Data Ingestion":
             show_data_ingestion()
         elif page == "FAQ":

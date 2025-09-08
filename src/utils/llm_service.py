@@ -48,14 +48,20 @@ class GameLensLLMService:
         return self.available
     
     def answer_faq_question(self, question: str, context_data: Dict, faq_content: str = "") -> str:
-        """Answer FAQ question using GPT with context from the dashboard"""
+        """Answer FAQ question using GPT with context from the dashboard.
+
+        Adds simple intent detection to tailor the prompt and focuses the
+        answers on concrete metrics rather than generic guidance.
+        """
         
         if not self.available or not OPENAI_AVAILABLE:
             return "❌ LLM service not available. Please configure OpenAI API key in .env file."
         
         try:
-            # Prepare context from dashboard data
+            # Prepare context and intent-specific guidance
             context_prompt = self._build_context_prompt(context_data, faq_content)
+            intent = self._detect_intent(question)
+            intent_prompt = self._build_intent_prompt(intent, context_data)
             
             # Create the full prompt
             system_prompt = """You are an AI assistant for GameLens AI, a ROAS (Return on Ad Spend) forecasting platform for mobile game advertising. 
@@ -70,8 +76,11 @@ Guidelines:
 - Focus on ROAS forecasting, mobile advertising, and data analytics topics
 """
             
-            user_prompt = f"""Context from current dashboard:
+            user_prompt = f"""Context from current dashboard (JSON-like summaries first, then narrative):
 {context_prompt}
+
+Intent-specific guidance:
+{intent_prompt}
 
 FAQ Content from your documentation (if available):
 {faq_content}
@@ -96,6 +105,59 @@ Please provide a helpful answer based on the context and FAQ content above. If t
         except Exception as e:
             logger.error(f"Error calling OpenAI API: {e}")
             return f"❌ Error generating answer: {str(e)}"
+
+    def _detect_intent(self, question: str) -> str:
+        """Lightweight intent classification for better prompts."""
+        q = question.lower()
+        if any(k in q for k in ["100% roi", "when will roi", "break-even", "payback", "d15", "d30", "d90"]):
+            return "roi_timeline"
+        if any(k in q for k in ["continue", "pause", "scale", "cut", "reduce", "maintain", "budget"]):
+            return "budget_action"
+        if any(k in q for k in ["projected roas", "keep spending", "same pace", "projection"]):
+            return "projection_same_spend"
+        if any(k in q for k in ["level progression", "highest quality", "long-term", "retention", "cohort"]):
+            return "level_quality_channels"
+        if any(k in q for k in ["compare", "actual", "ai forecast", "day"]):
+            return "forecast_vs_actual"
+        return "general_insight"
+
+    def _build_intent_prompt(self, intent: str, ctx: Dict) -> str:
+        """Return concise, numbers-first guidance for the LLM per intent."""
+        metrics = ctx.get('metrics', {}) or {}
+        pred_summary = ctx.get('pred_summary', {}) or {}
+        top_features = ctx.get('top_features', []) or []
+        scope = ctx.get('scope', {}) or {}
+        level_summary = ctx.get('level_progression_summary', {}) or {}
+
+        head = f"INTENT: {intent}\nSCOPE: {scope}\n"
+
+        if intent == "roi_timeline":
+            return head + (
+                "Goal: Estimate the earliest D-day where expected cumulative ROAS ≈ 1.0.\n"
+                f"Use prediction summary: {pred_summary} and any ROAS-by-day if available.\n"
+                f"Model metrics: {metrics}. Output a concrete day with a short rationale."
+            )
+        if intent == "budget_action":
+            return head + (
+                f"Goal: Action (scale/maintain/reduce/pause). Use metrics {metrics}, drivers {top_features}, predictions {pred_summary}.\n"
+                "Output 3 bullets: recommendation, confidence (high/med/low), and watchouts."
+            )
+        if intent == "projection_same_spend":
+            return head + (
+                f"Goal: Project ROAS assuming current spend pace. Use {pred_summary} and {metrics}.\n"
+                "Provide D7/D30 style outlook and risks."
+            )
+        if intent == "level_quality_channels":
+            return head + (
+                f"Goal: Rank channels/platforms by player quality via level progression summary: {level_summary}.\n"
+                "Prefer median max level, drop-off, and link back to ROAS differences."
+            )
+        if intent == "forecast_vs_actual":
+            return head + (
+                f"Goal: Compare actuals vs forecast succinctly. Use metrics {metrics}.\n"
+                "Report absolute/percentage errors and confidence coverage if present."
+            )
+        return head + "Goal: Provide focused insights using the numbers above (2-4 bullets)."
     
     def _build_context_prompt(self, context_data: Dict, faq_content: str) -> str:
         """Build comprehensive context prompt from dashboard data"""
