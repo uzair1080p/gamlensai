@@ -1331,6 +1331,22 @@ else:
                             'platforms': list(sorted(scoped_df[platform_col].dropna().unique())) if (scoped_df is not None and platform_col in scoped_df.columns) else [],
                             'date_range': f"{scoped_df['date'].min()} to {scoped_df['date'].max()}" if (scoped_df is not None and 'date' in scoped_df.columns and not scoped_df.empty) else 'Unknown'
                         }
+                        
+                        # Add ROAS progression data for ROI timeline analysis
+                        roas_columns = [col for col in scoped_df.columns if col.startswith('roas_d')]
+                        if roas_columns:
+                            enhanced_kpis['data_summary']['roas_columns'] = roas_columns
+                            
+                            # Calculate average ROAS progression by day
+                            roas_progression = {}
+                            for col in roas_columns:
+                                if col in scoped_df.columns:
+                                    avg_roas = scoped_df[col].mean()
+                                    if not pd.isna(avg_roas):
+                                        roas_progression[col] = float(avg_roas)
+                            
+                            if roas_progression:
+                                enhanced_kpis['roas_progression'] = roas_progression
                     
                     return llm_service.answer_faq_question(q, enhanced_kpis, content or "")
                 except Exception as e:
@@ -1343,6 +1359,27 @@ else:
         # Simple fallback answer function
         def answer_question_simple(q: str, kpis: dict) -> str:
             ql = q.lower()
+            
+            # Handle ROI timeline questions
+            if any(k in ql for k in ["100% roi", "when will roi", "break-even", "payback", "d15", "d30", "d90", "roi of 100%"]):
+                roas_prog = kpis.get('roas_progression', {})
+                if roas_prog:
+                    # Find when ROAS reaches 1.0
+                    roas_1_0_day = None
+                    for day, roas_value in roas_prog.items():
+                        if isinstance(roas_value, (int, float)) and roas_value >= 1.0:
+                            roas_1_0_day = day
+                            break
+                    
+                    if roas_1_0_day:
+                        return f"Based on the data, ROI of 100% (ROAS = 1.0) is achieved at {roas_1_0_day}. The ROAS progression shows: " + ", ".join([f"{day}: {value:.3f}" for day, value in roas_prog.items()])
+                    else:
+                        max_roas = max(roas_prog.values()) if roas_prog else 0
+                        max_day = max(roas_prog.keys(), key=lambda x: roas_prog[x]) if roas_prog else "Unknown"
+                        return f"ROI of 100% is not achieved in the available data. Maximum ROAS is {max_roas:.3f} at {max_day}. ROAS progression: " + ", ".join([f"{day}: {value:.3f}" for day, value in roas_prog.items()])
+                else:
+                    return "ROAS progression data not available. Please ensure your data includes ROAS columns (roas_d0, roas_d1, roas_d3, roas_d7, roas_d14, roas_d30, roas_d60, roas_d90) and train a model."
+            
             if any(k in ql for k in ["perform", "metric", "accuracy", "r2", "mape", "rmse", "mae"]):
                 m = kpis.get('metrics', {})
                 if not m:

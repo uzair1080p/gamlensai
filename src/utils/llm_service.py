@@ -135,7 +135,10 @@ Please provide a helpful answer based on the context and FAQ content above. If t
             return head + (
                 "Goal: Estimate the earliest D-day where expected cumulative ROAS ≈ 1.0.\n"
                 f"Use prediction summary: {pred_summary} and any ROAS-by-day if available.\n"
-                f"Model metrics: {metrics}. Output a concrete day with a short rationale."
+                f"Model metrics: {metrics}. \n"
+                "IMPORTANT: If you have ROAS data by day (roas_d0, roas_d1, roas_d3, roas_d7, roas_d14, roas_d30, roas_d60, roas_d90), "
+                "use this to calculate when cumulative ROAS reaches 1.0. Look for the day where the ROAS value is closest to 1.0 or higher.\n"
+                "Output a concrete day (e.g., D15, D30, D90) with a short rationale based on the actual data."
             )
         if intent == "budget_action":
             return head + (
@@ -214,6 +217,38 @@ Please provide a helpful answer based on the context and FAQ content above. If t
             if hasattr(predictions, 'columns') and 'roas_lower_bound' in predictions.columns and 'roas_upper_bound' in predictions.columns:
                 avg_confidence_width = (predictions['roas_upper_bound'] - predictions['roas_lower_bound']).mean()
                 context_parts.append(f"- Average confidence interval width: {avg_confidence_width:.3f}")
+        
+        # Add ROAS progression data for ROI timeline analysis
+        if 'roas_progression' in context_data:
+            roas_prog = context_data['roas_progression']
+            context_parts.append(f"\n📈 ROAS PROGRESSION BY DAY:")
+            for day, roas_value in roas_prog.items():
+                if isinstance(roas_value, (int, float)):
+                    context_parts.append(f"- {day}: {roas_value:.3f}")
+            
+            # Find when ROAS reaches 1.0
+            roas_1_0_day = None
+            for day, roas_value in roas_prog.items():
+                if isinstance(roas_value, (int, float)) and roas_value >= 1.0:
+                    roas_1_0_day = day
+                    break
+            
+            if roas_1_0_day:
+                context_parts.append(f"- ROAS reaches 1.0+ at: {roas_1_0_day}")
+            else:
+                context_parts.append("- ROAS does not reach 1.0 in available data")
+        
+        # Add raw data summary for ROI analysis
+        if 'data_summary' in context_data:
+            data_summary = context_data['data_summary']
+            context_parts.append(f"\n📊 DATA SUMMARY:")
+            context_parts.append(f"- Total records: {data_summary.get('total_records', 'Unknown')}")
+            context_parts.append(f"- Platforms: {', '.join(data_summary.get('platforms', []))}")
+            context_parts.append(f"- Date range: {data_summary.get('date_range', 'Unknown')}")
+            
+            # Add ROAS columns if available
+            if 'roas_columns' in data_summary:
+                context_parts.append(f"- Available ROAS columns: {', '.join(data_summary['roas_columns'])}")
         
         # Add feature importance with business interpretation
         if 'top_features' in context_data:
