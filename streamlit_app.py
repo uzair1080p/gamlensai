@@ -711,11 +711,37 @@ else:
         st.subheader("📋 Data Template")
         st.markdown("""
         **Download the data template** to ensure proper data structure:
-        - [Data Template CSV](Data_Template_GameLens_AI.csv)
-        - [Data Template Guide](DATA_TEMPLATE_GUIDE.md)
         
         **Required Hierarchy**: Game > Platform > Channel > Countries
         """)
+        
+        # Create download button for the template
+        if os.path.exists("Data_Template_GameLens_AI.csv"):
+            with open("Data_Template_GameLens_AI.csv", "r") as file:
+                csv_data = file.read()
+            
+            st.download_button(
+                label="📥 Download Data Template CSV",
+                data=csv_data,
+                file_name="Data_Template_GameLens_AI.csv",
+                mime="text/csv",
+                help="Download the data template with Game > Platform > Channel > Countries hierarchy"
+            )
+        else:
+            st.error("Template file not found. Please ensure Data_Template_GameLens_AI.csv exists in the project root.")
+        
+        # Show template guide
+        if os.path.exists("DATA_TEMPLATE_GUIDE.md"):
+            with open("DATA_TEMPLATE_GUIDE.md", "r") as file:
+                guide_content = file.read()
+            
+            st.download_button(
+                label="📖 Download Template Guide",
+                data=guide_content,
+                file_name="DATA_TEMPLATE_GUIDE.md",
+                mime="text/markdown",
+                help="Download the comprehensive data template guide"
+            )
         
         # Show template preview
         if st.checkbox("Show template preview"):
@@ -731,6 +757,15 @@ else:
             }
             template_df = pd.DataFrame(template_data)
             st.dataframe(template_df, use_container_width=True)
+        
+        # Show direct file access information
+        st.info("""
+        **Alternative Access Methods:**
+        - Use the download buttons above to get the template files
+        - Or run the template server: `python serve_templates.py` (port 8505)
+        - Then access directly via: `http://localhost:8505/Data_Template_GameLens_AI.csv`
+        - Template guide: `http://localhost:8505/DATA_TEMPLATE_GUIDE.md`
+        """)
 
         # Destination directories
         raw_dir = os.path.join("data", "raw")
