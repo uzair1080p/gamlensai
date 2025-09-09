@@ -705,7 +705,32 @@ else:
     def show_data_ingestion():
         """Upload Excel/CSV, preview, store on server, and optionally ask GPT to interpret schema."""
         st.header("📥 Data Ingestion")
-        st.info("Upload .xlsx or .csv files. We'll store them under data/raw/ and make them available for training.")
+        st.info("Upload .xlsx or .csv files following the Game > Platform > Channel > Countries hierarchy. We'll store them under data/raw/ and make them available for training.")
+        
+        # Show template download
+        st.subheader("📋 Data Template")
+        st.markdown("""
+        **Download the data template** to ensure proper data structure:
+        - [Data Template CSV](Data_Template_GameLens_AI.csv)
+        - [Data Template Guide](DATA_TEMPLATE_GUIDE.md)
+        
+        **Required Hierarchy**: Game > Platform > Channel > Countries
+        """)
+        
+        # Show template preview
+        if st.checkbox("Show template preview"):
+            template_data = {
+                'game': ['Your Game Name', 'Your Game Name'],
+                'platform': ['Unity Ads', 'Mistplay'],
+                'channel': ['Android', 'iOS'],
+                'country': ['United States', 'Canada'],
+                'date': ['2025-01-01', '2025-01-01'],
+                'installs': [100, 150],
+                'cost': [50.0, 75.0],
+                'roas_d30': [1.2, 1.4]
+            }
+            template_df = pd.DataFrame(template_data)
+            st.dataframe(template_df, use_container_width=True)
 
         # Destination directories
         raw_dir = os.path.join("data", "raw")
@@ -748,6 +773,25 @@ else:
                         # Quick heuristics for column categories
                         col_names = [str(c) for c in preview_df.columns]
                         st.caption("Detected columns: " + ", ".join(col_names))
+
+                        # Validate hierarchy structure
+                        st.subheader(f"Data Validation: {up.name}")
+                        hierarchy_cols = ['game', 'platform', 'channel', 'country']
+                        missing_hierarchy = [col for col in hierarchy_cols if col not in preview_df.columns]
+                        
+                        if missing_hierarchy:
+                            st.error(f"❌ Missing required hierarchy columns: {missing_hierarchy}")
+                            st.warning("Please ensure your data includes the Game > Platform > Channel > Countries hierarchy")
+                        else:
+                            st.success("✅ All required hierarchy columns present")
+                        
+                        # Check for key data columns
+                        key_cols = ['installs', 'cost', 'roas_d30']
+                        missing_key = [col for col in key_cols if col not in preview_df.columns]
+                        if missing_key:
+                            st.warning(f"⚠️ Missing key data columns: {missing_key}")
+                        else:
+                            st.success("✅ Key data columns present")
 
                         # Optional: Ask GPT to interpret schema and suggest mappings
                         if LLM_AVAILABLE and GameLensLLMService:

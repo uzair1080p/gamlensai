@@ -1,0 +1,6 @@
+game,platform,channel,country,date,installs,cost,ad_revenue,revenue,roas_d0,roas_d1,roas_d3,roas_d7,roas_d14,roas_d30,roas_d60,roas_d90,retention_rate_d1,retention_rate_d2,retention_rate_d3,retention_rate_d7,retention_rate_d14,retention_rate_d30,level_1_events,level_5_events,level_10_events,level_15_events,level_20_events,level_25_events,level_30_events,level_40_events,level_50_events
+Your Game Name,Unity Ads,Android,United States,2025-01-01,100,50.0,25.0,30.0,0.6,0.7,0.8,0.9,1.0,1.2,1.4,1.6,0.3,0.2,0.15,0.1,0.08,0.05,95,80,60,45,35,25,20,15,10
+Your Game Name,Unity Ads,iOS,United States,2025-01-01,120,60.0,30.0,36.0,0.6,0.7,0.8,0.9,1.0,1.2,1.4,1.6,0.35,0.25,0.2,0.15,0.12,0.08,110,95,75,60,50,40,35,25,18
+Your Game Name,Mistplay,Android,United States,2025-01-01,150,75.0,37.5,45.0,0.6,0.7,0.8,0.9,1.0,1.2,1.4,1.6,0.3,0.2,0.15,0.1,0.08,0.05,140,120,90,70,55,40,30,20,12
+Your Game Name,Mistplay,iOS,United States,2025-01-01,80,40.0,20.0,24.0,0.6,0.7,0.8,0.9,1.0,1.2,1.4,1.6,0.35,0.25,0.2,0.15,0.12,0.08,75,65,50,35,25,18,15,10,6
+Your Game Name,Facebook Ads,Android,Canada,2025-01-01,80,40.0,20.0,24.0,0.6,0.7,0.8,0.9,1.0,1.2,1.4,1.6,0.28,0.18,0.12,0.08,0.06,0.04,75,60,45,30,20,15,12,8,5

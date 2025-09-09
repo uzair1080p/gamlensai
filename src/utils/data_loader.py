@@ -70,12 +70,15 @@ class GameLensDataLoader:
             return None
     
     def _standardize_unity_ads_data(self, df: pd.DataFrame, data_type: str, platform: str) -> pd.DataFrame:
-        """Standardize Unity Ads data format"""
+        """Standardize Unity Ads data format with Game > Platform > Channel > Countries hierarchy"""
         df = df.copy()
         
         # Add platform and data type columns
         df['platform'] = platform
         df['data_type'] = data_type
+        
+        # Ensure Game > Platform > Channel > Countries hierarchy is present
+        self._ensure_hierarchy_columns(df)
         
         # Standardize column names based on data type
         if data_type == 'adspend_revenue':
@@ -107,12 +110,15 @@ class GameLensDataLoader:
         return df
     
     def _standardize_mistplay_data(self, df: pd.DataFrame, data_type: str, platform: str) -> pd.DataFrame:
-        """Standardize Mistplay data format"""
+        """Standardize Mistplay data format with Game > Platform > Channel > Countries hierarchy"""
         df = df.copy()
         
         # Add platform and data type columns
         df['platform'] = platform
         df['data_type'] = data_type
+        
+        # Ensure Game > Platform > Channel > Countries hierarchy is present
+        self._ensure_hierarchy_columns(df)
         
         # Standardize column names based on data type
         if data_type == 'adspend_revenue':
@@ -142,6 +148,30 @@ class GameLensDataLoader:
                 df['total_installs'] = df['installs']
                 
         return df
+    
+    def _ensure_hierarchy_columns(self, df: pd.DataFrame) -> None:
+        """Ensure Game > Platform > Channel > Countries hierarchy columns are present"""
+        # Add missing hierarchy columns with default values if not present
+        if 'game' not in df.columns:
+            df['game'] = 'Unknown Game'
+            logger.warning("Missing 'game' column - added with default value")
+        
+        if 'channel' not in df.columns:
+            # Try to infer channel from subdirectory or use default
+            if 'subdirectory' in df.columns:
+                df['channel'] = df['subdirectory']
+            else:
+                df['channel'] = 'Unknown Channel'
+            logger.warning("Missing 'channel' column - added with default value")
+        
+        if 'country' not in df.columns:
+            df['country'] = 'Unknown Country'
+            logger.warning("Missing 'country' column - added with default value")
+        
+        # Ensure platform column exists (should be set by calling function)
+        if 'platform' not in df.columns:
+            df['platform'] = 'Unknown Platform'
+            logger.warning("Missing 'platform' column - added with default value")
     
     def load_platform_data(self, platform: str) -> Dict[str, pd.DataFrame]:
         """Load all data for a specific platform"""
@@ -237,7 +267,7 @@ class GameLensDataLoader:
         return combined_data
     
     def validate_data(self, combined_data: Dict[str, pd.DataFrame]) -> Dict[str, List[str]]:
-        """Validate combined data for completeness and quality"""
+        """Validate combined data for completeness and quality with Game > Platform > Channel > Countries hierarchy"""
         validation_results = {}
         
         for data_type, df in combined_data.items():
@@ -246,7 +276,13 @@ class GameLensDataLoader:
             if df.empty:
                 issues.append(f"No data found for {data_type}")
                 continue
-                
+            
+            # Check for Game > Platform > Channel > Countries hierarchy
+            hierarchy_cols = ['game', 'platform', 'channel', 'country']
+            missing_hierarchy = [col for col in hierarchy_cols if col not in df.columns]
+            if missing_hierarchy:
+                issues.append(f"Missing hierarchy columns: {missing_hierarchy}")
+            
             # Check for required columns based on data type
             if data_type == 'adspend_revenue':
                 required_cols = ['platform', 'spend', 'revenue']
@@ -271,6 +307,13 @@ class GameLensDataLoader:
                 level_cols = [col for col in df.columns if 'level' in col and 'events' in col]
                 if not level_cols:
                     issues.append("No level progression columns found")
+            
+            # Check for missing values in hierarchy columns
+            for col in hierarchy_cols:
+                if col in df.columns:
+                    missing_count = df[col].isnull().sum()
+                    if missing_count > 0:
+                        issues.append(f"Missing {col} values: {missing_count}")
             
             # Check for missing values in key columns
             if 'platform' in df.columns:

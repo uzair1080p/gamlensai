@@ -132,6 +132,20 @@ recommendations = forecaster.generate_recommendations(X, y, target_roas=1.0)
 
 ## 📊 Data Requirements
 
+### Data Hierarchy Structure (Client Requirement)
+
+The system now enforces the **Game > Platform > Channel > Countries** hierarchy as requested by the client:
+
+1. **Game** (Top Level): Your game/app name
+2. **Platform** (Second Level): Advertising platform (Unity Ads, Mistplay, Facebook Ads, etc.)
+3. **Channel** (Third Level): Device type (Android, iOS, Web, etc.)
+4. **Countries** (Fourth Level): Geographic location (United States, Canada, etc.)
+
+### Data Template
+
+**Download the data template**: [Data_Template_GameLens_AI.csv](Data_Template_GameLens_AI.csv)
+**Template guide**: [DATA_TEMPLATE_GUIDE.md](DATA_TEMPLATE_GUIDE.md)
+
 ### Expected CSV Files
 
 The system expects the following CSV files in your Unity Ads data directory:
@@ -148,30 +162,30 @@ The system expects the following CSV files in your Unity Ads data directory:
 - `retention.csv` - Retention rates by day
 - `ROAS.csv` - ROAS metrics by day
 
-### Data Schema
+### Data Schema (Updated with Hierarchy)
 
 #### Adspend & Revenue Data
 ```csv
-country,day,installs,cost,ad_revenue,revenue
-United States,2025-08-01,15,8.8053,2.4321,3.949
+game,platform,channel,country,date,installs,cost,ad_revenue,revenue
+My Awesome Game,Unity Ads,Android,United States,2025-01-01,100,50.0,25.0,30.0
 ```
 
 #### Retention Data
 ```csv
-country,installs,retention_rate_d1,retention_rate_d2,retention_rate_d3,...
-United States,282,0.3085,0.195,0.1738,...
+game,platform,channel,country,installs,retention_rate_d1,retention_rate_d2,retention_rate_d3,...
+My Awesome Game,Unity Ads,Android,United States,100,0.3,0.2,0.15,...
 ```
 
 #### ROAS Data
 ```csv
-country,installs,roas_d0,roas_d1,roas_d2,roas_d3,...
-United States,282,0.1938,0.2347,0.2693,0.2825,...
+game,platform,channel,country,installs,roas_d0,roas_d1,roas_d2,roas_d3,...
+My Awesome Game,Unity Ads,Android,United States,100,0.6,0.7,0.8,0.9,...
 ```
 
 #### Level Progression Data
 ```csv
-country,installs,level_10_events,level_20_events,level_30_events,...
-United States,282,227,179,145,...
+game,platform,channel,country,installs,level_1_events,level_5_events,level_10_events,...
+My Awesome Game,Unity Ads,Android,United States,100,95,80,60,...
 ```
 
 ## 🎯 Model Performance
