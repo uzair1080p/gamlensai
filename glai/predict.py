@@ -328,15 +328,28 @@ def get_prediction_runs(
     Returns:
         List of PredictionRun objects
     """
+    import uuid as _uuid
     db = get_db_session()
     try:
         query = db.query(PredictionRun)
         
         if model_version_id:
-            query = query.filter(PredictionRun.model_version_id == model_version_id)
+            mv_id = model_version_id
+            try:
+                if isinstance(model_version_id, str):
+                    mv_id = _uuid.UUID(model_version_id)
+            except Exception:
+                mv_id = model_version_id
+            query = query.filter(PredictionRun.model_version_id == mv_id)
         
         if dataset_id:
-            query = query.filter(PredictionRun.dataset_id == dataset_id)
+            ds_id = dataset_id
+            try:
+                if isinstance(dataset_id, str):
+                    ds_id = _uuid.UUID(dataset_id)
+            except Exception:
+                ds_id = dataset_id
+            query = query.filter(PredictionRun.dataset_id == ds_id)
         
         return query.order_by(PredictionRun.requested_at.desc()).all()
     finally:
