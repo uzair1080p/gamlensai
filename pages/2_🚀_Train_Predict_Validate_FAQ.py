@@ -251,11 +251,13 @@ def show_datasets_tab():
                     if st.button("Use for Training", key=f"train_{i}"):
                         st.session_state['selected_dataset'] = datasets[i]
                         st.session_state['active_tab'] = "Model Training"
+                        st.session_state['nav_message'] = "Dataset selected. Open the Model Training tab to continue."
                         st.rerun()
                     
                     if st.button("Use for Predictions", key=f"predict_{i}"):
                         st.session_state['selected_dataset'] = datasets[i]
                         st.session_state['active_tab'] = "Predictions"
+                        st.session_state['nav_message'] = "Dataset selected. Open the Predictions tab to continue."
                         st.rerun()
                 
                 st.markdown("---")
@@ -925,6 +927,8 @@ def main():
     """Main application"""
     # Header
     st.markdown('<h1 class="main-header">🚀 GameLens AI - Train, Predict, Validate, FAQ</h1>', unsafe_allow_html=True)
+    if 'nav_message' in st.session_state:
+        st.info(st.session_state.pop('nav_message'))
     
     # Show selection banner
     show_selection_banner()
