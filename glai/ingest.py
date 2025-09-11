@@ -389,9 +389,17 @@ def get_dataset_by_id(dataset_id: str) -> Optional[Dataset]:
     Returns:
         Dataset object or None
     """
+    import uuid as _uuid
     db = get_db_session()
     try:
-        return db.query(Dataset).filter(Dataset.id == dataset_id).first()
+        # Ensure we compare using UUID objects when the column is UUID-typed
+        ds_id = dataset_id
+        try:
+            if isinstance(dataset_id, str):
+                ds_id = _uuid.UUID(dataset_id)
+        except Exception:
+            ds_id = dataset_id
+        return db.query(Dataset).filter(Dataset.id == ds_id).first()
     finally:
         db.close()
 
