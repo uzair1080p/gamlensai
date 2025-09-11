@@ -276,6 +276,14 @@ def ingest_file(file_path: str, notes: Optional[str] = None) -> Dataset:
         notes=notes
     )
     
+    # Helper to ensure canonical name uniqueness
+    def _ensure_unique_name(db_session, base_name: str) -> str:
+        name = base_name
+        # If name exists, append short uuid until unique
+        while db_session.query(Dataset).filter(Dataset.canonical_name == name).first() is not None:
+            name = f"{base_name}-{str(uuid.uuid4())[:8]}"
+        return name
+
     # Save to database
     db = get_db_session()
     try:
@@ -294,9 +302,8 @@ def ingest_file(file_path: str, notes: Optional[str] = None) -> Dataset:
             'columns': df_normalized.columns.tolist(),
             'sample_rows': df_normalized.head(3).to_dict('records')
         })
-        
-        # Update canonical name
-        dataset.canonical_name = canonical_name
+        # Ensure uniqueness in DB
+        dataset.canonical_name = _ensure_unique_name(db, canonical_name)
         db.commit()
         db.refresh(dataset)
         
