@@ -1,0 +1,166 @@
+{
+  "feature_list": [
+    "installs",
+    "cost",
+    "revenue",
+    "roas_d0",
+    "roas_d1",
+    "roas_d3",
+    "roas_d7",
+    "roas_d14",
+    "retention_d1",
+    "retention_d3",
+    "retention_d7",
+    "retention_d30",
+    "cpi",
+    "cost_per_install",
+    "roas",
+    "roas_d1_vs_roas_d0",
+    "roas_d3_vs_roas_d1",
+    "roas_d7_vs_roas_d3",
+    "roas_d14_vs_roas_d7",
+    "retention_d1_rate",
+    "retention_d3_rate",
+    "retention_d7_rate",
+    "retention_d30_rate",
+    "day_of_week",
+    "month",
+    "quarter",
+    "country_United States"
+  ],
+  "params": {
+    "learning_rate": 0.05,
+    "max_depth": 6,
+    "n_estimators": 100
+  },
+  "metrics": {
+    "p10": {
+      "r2": -11.405939007749707,
+      "mae": 0.68571423803057,
+      "rmse": 0.7151422977518275,
+      "mape": 28.184480053592093
+    },
+    "p50": {
+      "r2": -2.733911667719981,
+      "mae": 0.350000034059797,
+      "rmse": 0.392337359226448,
+      "mape": 14.11322138928928
+    },
+    "p90": {
+      "r2": -0.17232684966363143,
+      "mae": 0.1671428612300328,
+      "rmse": 0.21983761336823027,
+      "mape": 7.543723162167794
+    }
+  },
+  "feature_importance": [
+    {
+      "feature": "installs",
+      "importance": 0
+    },
+    {
+      "feature": "roas",
+      "importance": 0
+    },
+    {
+      "feature": "quarter",
+      "importance": 0
+    },
+    {
+      "feature": "month",
+      "importance": 0
+    },
+    {
+      "feature": "day_of_week",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d30_rate",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d7_rate",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d3_rate",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d1_rate",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d14_vs_roas_d7",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d7_vs_roas_d3",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d3_vs_roas_d1",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d1_vs_roas_d0",
+      "importance": 0
+    },
+    {
+      "feature": "cost_per_install",
+      "importance": 0
+    },
+    {
+      "feature": "cost",
+      "importance": 0
+    },
+    {
+      "feature": "cpi",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d30",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d7",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d3",
+      "importance": 0
+    },
+    {
+      "feature": "retention_d1",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d14",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d7",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d3",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d1",
+      "importance": 0
+    },
+    {
+      "feature": "roas_d0",
+      "importance": 0
+    },
+    {
+      "feature": "revenue",
+      "importance": 0
+    },
+    {
+      "feature": "country_United States",
+      "importance": 0
+    }
+  ]
+}
