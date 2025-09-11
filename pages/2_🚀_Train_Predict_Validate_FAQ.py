@@ -345,7 +345,7 @@ def show_model_training_tab():
 
         available_days, debug_info = discover_target_days(selected_dataset_ids)
         # Prefer D30 if present; else first available
-        default_idx = available_days.index(30) if 30 in available_days else 0
+        default_idx = available_days.index(30) if 30 in available_days else (available_days.index(7) if 7 in available_days else 0)
         target_day = st.selectbox(
             "Target Day",
             available_days if available_days else [30],

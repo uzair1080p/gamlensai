@@ -36,6 +36,26 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with engineered features
     """
     features_df = df.copy()
+
+    # Normalize ROAS/Retention column labels to canonical lowercase form
+    # Accept variants like ROAS_D30, roas d30, ROAS_d 30, etc.
+    import re as _re
+    rename_map: dict = {}
+    for col in list(features_df.columns):
+        col_str = str(col).strip()
+        lc = col_str.lower()
+        m = _re.match(r"^roas[_\s]*d\s*(\d+)$", lc)
+        if m:
+            day = m.group(1)
+            rename_map[col] = f"roas_d{day}"
+            continue
+        m2 = _re.match(r"^retention[_\s]*d\s*(\d+)$", lc)
+        if m2:
+            day = m2.group(1)
+            rename_map[col] = f"retention_d{day}"
+            continue
+    if rename_map:
+        features_df = features_df.rename(columns=rename_map)
     
     # Basic features
     if 'cost' in features_df.columns and 'installs' in features_df.columns:
