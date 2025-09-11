@@ -22,7 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Import GameLens modules
 from glai.db import init_database, get_db_session
-from glai.models import Dataset, ModelVersion, PredictionRun
+from glai.models import Dataset, ModelVersion, PredictionRun, PlatformEnum
 from glai.ingest import ingest_file, get_datasets, get_dataset_by_id, load_dataset_data
 from glai.train import train_lgbm_quantile, get_model_versions, get_model_version_by_id, load_model_artifacts
 from glai.predict import run_predictions, get_prediction_runs, load_predictions, generate_recommendations
@@ -156,7 +156,7 @@ def show_datasets_tab():
     with col1:
         platform_filter = st.selectbox(
             "Filter by Platform",
-            ["All"] + [p.value for p in ["unity_ads", "mistplay", "facebook", "google", "tiktok", "unknown"]]
+            ["All"] + [p.value for p in PlatformEnum]
         )
     
     with col2:
