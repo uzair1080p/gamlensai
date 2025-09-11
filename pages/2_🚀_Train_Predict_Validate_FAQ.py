@@ -297,22 +297,29 @@ def show_model_training_tab():
 
         # Discover available ROAS targets from selected (or all valid) datasets
         def discover_target_days(ds_ids):
-            try:
-                sample_ids = ds_ids if ds_ids else [d.id for d in valid_datasets[:3]]
-                days = set()
-                for did in sample_ids:
+            sample_ids = ds_ids if ds_ids else [d.id for d in valid_datasets[:3]]
+            days = set()
+            for did in sample_ids:
+                try:
                     ds = get_dataset_by_id(did)
-                    if ds and ds.storage_path and os.path.exists(ds.storage_path):
-                        df_head = pd.read_parquet(ds.storage_path, engine="pyarrow").head(3)
-                        for col in df_head.columns:
-                            if isinstance(col, str) and col.startswith("roas_d"):
-                                import re as _re
-                                m = _re.search(r"roas_d(\d+)", col)
-                                if m:
-                                    days.add(int(m.group(1)))
-                return sorted(days)
-            except Exception:
-                return [15, 30, 45, 90]
+                    if not (ds and ds.storage_path and os.path.exists(ds.storage_path)):
+                        continue
+                    # Try to read only schema (fast) via pyarrow; fallback to pandas
+                    try:
+                        import pyarrow.parquet as pq  # type: ignore
+                        cols = [str(c) for c in pq.ParquetFile(ds.storage_path).schema.names]
+                    except Exception:
+                        cols = [str(c) for c in pd.read_parquet(ds.storage_path).columns]
+                    import re as _re
+                    for col in cols:
+                        if col.startswith("roas_d"):
+                            m = _re.search(r"roas_d(\d+)", col)
+                            if m:
+                                days.add(int(m.group(1)))
+                except Exception:
+                    continue
+            # Fallback if nothing discovered
+            return sorted(days) if days else [30]
 
         available_days = discover_target_days(selected_dataset_ids)
         # Prefer D30 if present; else first available
@@ -323,6 +330,8 @@ def show_model_training_tab():
             index=default_idx if available_days else 0,
             help="Targets are discovered from ROAS columns in your dataset(s)"
         )
+        # Show what was discovered for clarity
+        st.caption(f"Available targets detected: {', '.join(['D'+str(d) for d in available_days])}")
         
         # Model parameters
         st.subheader("Model Parameters")
