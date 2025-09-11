@@ -175,7 +175,8 @@ def show_datasets_tab():
                 st.write(f"- Channel: {dataset.channel}")
                 st.write(f"- Game: {dataset.game}")
                 st.write(f"- Records: {dataset.records}")
-                st.write(f"- Date range: {dataset.data_start_date} to {dataset.data_end_date}")
+                st.write(f"- Date range start: {dataset.data_start_date}")
+                st.write(f"- Upload (End) date: {dataset.data_end_date}")
                 
                 # Clean up temp file
                 os.remove(temp_path)
@@ -218,7 +219,8 @@ def show_datasets_tab():
                 'Channel': dataset.channel,
                 'Game': dataset.game,
                 'Records': dataset.records,
-                'Date Range': f"{dataset.data_start_date} to {dataset.data_end_date}",
+                'Start Date': f"{dataset.data_start_date}",
+                'Upload (End) Date': f"{dataset.data_end_date}",
                 'Ingested': dataset.ingest_started_at.strftime("%Y-%m-%d %H:%M"),
                 'Status': "✅ Complete" if dataset.ingest_completed_at else "⏳ Processing"
             })
