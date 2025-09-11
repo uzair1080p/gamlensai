@@ -112,6 +112,42 @@ def show_datasets_tab():
     """Show datasets tab"""
     st.header("📊 Datasets")
     
+    # Template download + guide (restored)
+    st.subheader("📋 Data Template")
+    tpl_csv = "Data_Template_GameLens_AI.csv"
+    tpl_md = "DATA_TEMPLATE_GUIDE.md"
+    col_tpl1, col_tpl2, col_tpl3 = st.columns([1,1,2])
+    with col_tpl1:
+        if os.path.exists(tpl_csv):
+            with open(tpl_csv, "r") as f:
+                st.download_button(
+                    label="📥 Download Template CSV",
+                    data=f.read(),
+                    file_name="Data_Template_GameLens_AI.csv",
+                    mime="text/csv"
+                )
+        else:
+            st.info("Template CSV not found in project root.")
+    with col_tpl2:
+        if os.path.exists(tpl_md):
+            with open(tpl_md, "r") as f:
+                st.download_button(
+                    label="📖 Download Template Guide",
+                    data=f.read(),
+                    file_name="DATA_TEMPLATE_GUIDE.md",
+                    mime="text/markdown"
+                )
+        else:
+            st.info("Guide not found.")
+    with col_tpl3:
+        if st.checkbox("Show template preview") and os.path.exists(tpl_csv):
+            try:
+                import pandas as pd
+                prev = pd.read_csv(tpl_csv).head(10)
+                st.dataframe(prev, use_container_width=True)
+            except Exception:
+                st.warning("Could not preview template.")
+    
     # File upload section
     st.subheader("Upload New Dataset")
     
