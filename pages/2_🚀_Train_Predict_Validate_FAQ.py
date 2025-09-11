@@ -306,7 +306,7 @@ def show_model_training_tab():
                     if not (ds and ds.storage_path and os.path.exists(ds.storage_path)):
                         debug_info.append(f"skip: missing file for {did}")
                         continue
-                    # Try to read schema with pyarrow, fallback to pandas
+                    # Try to read schema with pyarrow, fallback to pandas; if still empty, read a small DF
                     cols = []
                     err = None
                     try:
@@ -319,14 +319,22 @@ def show_model_training_tab():
                         except Exception as e2:
                             err = f"{err} | pandas:{e2}"
                     if not cols:
+                        try:
+                            df_head = pd.read_parquet(ds.storage_path).head(2)
+                            cols = [str(c) for c in df_head.columns]
+                        except Exception:
+                            pass
+                    if not cols:
                         debug_info.append(f"no-cols: {ds.storage_path} ({err})")
                         continue
                     import re as _re
                     rcols = []
                     for col in cols:
-                        if col.startswith("roas_d"):
+                        c = col.strip()
+                        lc = c.lower()
+                        if lc.startswith("roas_d"):
                             rcols.append(col)
-                            m = _re.search(r"roas_d(\d+)", col)
+                            m = _re.search(r"roas_d\s*(\d+)", lc)
                             if m:
                                 days.add(int(m.group(1)))
                     debug_info.append(f"{os.path.basename(ds.storage_path)} → roas cols: {', '.join(rcols[:20])}")
