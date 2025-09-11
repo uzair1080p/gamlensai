@@ -301,7 +301,7 @@ def show_model_training_tab():
             days = set()
             for did in sample_ids:
                 try:
-                    ds = get_dataset_by_id(did)
+                    ds = get_dataset_by_id(str(did))
                     if not (ds and ds.storage_path and os.path.exists(ds.storage_path)):
                         continue
                     # Try to read only schema (fast) via pyarrow; fallback to pandas
