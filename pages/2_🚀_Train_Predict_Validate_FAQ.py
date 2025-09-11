@@ -142,7 +142,6 @@ def show_datasets_tab():
     with col_tpl3:
         if st.checkbox("Show template preview") and os.path.exists(tpl_csv):
             try:
-                import pandas as pd
                 prev = pd.read_csv(tpl_csv).head(10)
                 st.dataframe(prev, use_container_width=True)
             except Exception:
