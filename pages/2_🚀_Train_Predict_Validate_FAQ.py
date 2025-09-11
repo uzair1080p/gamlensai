@@ -342,6 +342,11 @@ def show_model_training_tab():
                             st.write(f"Model: {model_version.model_name}")
                             st.write(f"Version: {model_version.version}")
                             st.write(f"Target Day: D{model_version.target_day}")
+                            # Keep selection and navigate to Predictions automatically
+                            st.session_state['selected_model'] = model_version
+                            st.session_state['active_tab'] = "Predictions"
+                            st.session_state['nav_message'] = "Model trained. Switched to Predictions."
+                            st.rerun()
                             
                             # Show metrics
                             if model_version.metrics_json:
@@ -374,8 +379,8 @@ def show_model_training_tab():
                 selected_model_id = model_options[selected_model_name]
                 
                 # Dataset selection for predictions
-                if datasets:
-                    pred_dataset_options = {f"{d.canonical_name}": d.id for d in datasets}
+                if valid_datasets:
+                    pred_dataset_options = {f"{d.canonical_name}": d.id for d in valid_datasets}
                     selected_pred_dataset_name = st.selectbox(
                         "Select Dataset for Predictions",
                         list(pred_dataset_options.keys())
@@ -933,28 +938,23 @@ def main():
     # Show selection banner
     show_selection_banner()
     
-    # Tab navigation
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 Datasets", 
-        "🤖 Model Training", 
-        "📈 Predictions", 
-        "✅ Validation", 
-        "❓ FAQ"
-    ])
+    # Sidebar-controlled navigation (programmatic)
+    tabs = ["Datasets", "Model Training", "Predictions", "Validation", "FAQ"]
+    if 'active_tab' not in st.session_state or st.session_state['active_tab'] not in tabs:
+        st.session_state['active_tab'] = "Datasets"
+    selected_idx = tabs.index(st.session_state['active_tab'])
+    chosen = st.sidebar.radio("Navigation", tabs, index=selected_idx)
+    st.session_state['active_tab'] = chosen
     
-    with tab1:
+    if chosen == "Datasets":
         show_datasets_tab()
-    
-    with tab2:
+    elif chosen == "Model Training":
         show_model_training_tab()
-    
-    with tab3:
+    elif chosen == "Predictions":
         show_predictions_tab()
-    
-    with tab4:
+    elif chosen == "Validation":
         show_validation_tab()
-    
-    with tab5:
+    else:
         show_faq_tab()
     
     # Footer
