@@ -894,7 +894,7 @@ def show_faq_tab():
     
     # Extract unique values for filters
     games = ["All"] + sorted(list(set([d.game for d in datasets if d.game])))
-    platforms = ["All"] + sorted(list(set([d.source_platform.value for d in datasets if d.source_platform])))
+    platforms = ["All"] + sorted(list(set([d.source_platform.value if hasattr(d.source_platform, 'value') else str(d.source_platform) for d in datasets if d.source_platform])))
     channels = ["All"] + sorted(list(set([d.channel for d in datasets if d.channel])))
     countries = ["All"] + sorted(list(set([country for d in datasets if d.countries for country in d.countries])))
     
