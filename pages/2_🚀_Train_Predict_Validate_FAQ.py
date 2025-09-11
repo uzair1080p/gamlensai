@@ -13,6 +13,13 @@ import uuid
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 
+# Ensure repository root is on sys.path so `glai` can be imported reliably
+import sys
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 # Import GameLens modules
 from glai.db import init_database, get_db_session
 from glai.models import Dataset, ModelVersion, PredictionRun
