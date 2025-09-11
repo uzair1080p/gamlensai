@@ -275,13 +275,7 @@ def show_model_training_tab():
     
     with col1:
         st.subheader("Training Configuration")
-        
-        target_day = st.selectbox(
-            "Target Day",
-            [15, 30, 45, 90],
-            help="Predict ROAS for this day"
-        )
-        
+
         # Dataset selection (only completed datasets with valid files)
         datasets = get_datasets()
         valid_datasets = [
@@ -300,6 +294,35 @@ def show_model_training_tab():
         else:
             st.warning("No completed datasets with available data files. Upload data on the Datasets tab and wait until Status shows Complete.")
             selected_dataset_ids = []
+
+        # Discover available ROAS targets from selected (or all valid) datasets
+        def discover_target_days(ds_ids):
+            try:
+                sample_ids = ds_ids if ds_ids else [d.id for d in valid_datasets[:3]]
+                days = set()
+                for did in sample_ids:
+                    ds = get_dataset_by_id(did)
+                    if ds and ds.storage_path and os.path.exists(ds.storage_path):
+                        df_head = pd.read_parquet(ds.storage_path, engine="pyarrow").head(3)
+                        for col in df_head.columns:
+                            if isinstance(col, str) and col.startswith("roas_d"):
+                                import re as _re
+                                m = _re.search(r"roas_d(\d+)", col)
+                                if m:
+                                    days.add(int(m.group(1)))
+                return sorted(days)
+            except Exception:
+                return [15, 30, 45, 90]
+
+        available_days = discover_target_days(selected_dataset_ids)
+        # Prefer D30 if present; else first available
+        default_idx = available_days.index(30) if 30 in available_days else 0
+        target_day = st.selectbox(
+            "Target Day",
+            available_days if available_days else [30],
+            index=default_idx if available_days else 0,
+            help="Targets are discovered from ROAS columns in your dataset(s)"
+        )
         
         # Model parameters
         st.subheader("Model Parameters")
