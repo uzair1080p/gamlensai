@@ -27,6 +27,7 @@ from glai.ingest import ingest_file, get_datasets, get_dataset_by_id, load_datas
 from glai.train import train_lgbm_quantile, get_model_versions, get_model_version_by_id, load_model_artifacts
 from glai.predict import run_predictions, get_prediction_runs, load_predictions, generate_recommendations
 from glai.naming import make_canonical_name
+from glai.faq_gpt import get_faq_gpt
 
 # Page configuration
 st.set_page_config(
@@ -918,20 +919,23 @@ def show_faq_tab():
     )
     
     if custom_question:
-        # Generate answer based on current context
-        context_info = {
-            'model': selected_model.model_name if selected_model else None,
-            'dataset': selected_dataset.canonical_name if selected_dataset else None,
-            'filters': {
+        # Generate comprehensive context for GPT
+        faq_gpt = get_faq_gpt()
+        context = faq_gpt.generate_context_summary(
+            selected_model=selected_model,
+            selected_dataset=selected_dataset,
+            filters={
                 'game': game_filter,
                 'platform': platform_filter,
                 'channel': channel_filter,
                 'country': country_filter
             }
-        }
+        )
         
-        # Simple fallback answer system
-        answer = generate_faq_answer(custom_question, context_info)
+        # Generate GPT-powered answer
+        with st.spinner("🤖 Generating intelligent answer..."):
+            answer = faq_gpt.generate_faq_answer(custom_question, context)
+        
         st.write("**Answer:**")
         st.write(answer)
     
@@ -982,22 +986,27 @@ def show_faq_tab():
         st.markdown(f"**{category}**")
         for question in questions:
             with st.expander(question):
-                context_info = {
-                    'model': selected_model.model_name if selected_model else None,
-                    'dataset': selected_dataset.canonical_name if selected_dataset else None,
-                    'filters': {
+                # Generate comprehensive context for GPT
+                faq_gpt = get_faq_gpt()
+                context = faq_gpt.generate_context_summary(
+                    selected_model=selected_model,
+                    selected_dataset=selected_dataset,
+                    filters={
                         'game': game_filter,
                         'platform': platform_filter,
                         'channel': channel_filter,
                         'country': country_filter
                     }
-                }
+                )
                 
-                answer = generate_faq_answer(question, context_info)
+                # Generate GPT-powered answer
+                with st.spinner("🤖 Generating intelligent answer..."):
+                    answer = faq_gpt.generate_faq_answer(question, context)
+                
                 st.write(answer)
         st.markdown("---")
 
-def generate_faq_answer(question: str, context: Dict[str, Any]) -> str:
+def main():
     """Generate FAQ answer based on context"""
     question_lower = question.lower()
     
