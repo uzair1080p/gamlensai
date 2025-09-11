@@ -299,29 +299,43 @@ def show_model_training_tab():
         def discover_target_days(ds_ids):
             sample_ids = ds_ids if ds_ids else [d.id for d in valid_datasets[:3]]
             days = set()
+            debug_info = []
             for did in sample_ids:
                 try:
                     ds = get_dataset_by_id(str(did))
                     if not (ds and ds.storage_path and os.path.exists(ds.storage_path)):
+                        debug_info.append(f"skip: missing file for {did}")
                         continue
-                    # Try to read only schema (fast) via pyarrow; fallback to pandas
+                    # Try to read schema with pyarrow, fallback to pandas
+                    cols = []
+                    err = None
                     try:
                         import pyarrow.parquet as pq  # type: ignore
                         cols = [str(c) for c in pq.ParquetFile(ds.storage_path).schema.names]
-                    except Exception:
-                        cols = [str(c) for c in pd.read_parquet(ds.storage_path).columns]
+                    except Exception as e:
+                        err = str(e)
+                        try:
+                            cols = [str(c) for c in pd.read_parquet(ds.storage_path).columns]
+                        except Exception as e2:
+                            err = f"{err} | pandas:{e2}"
+                    if not cols:
+                        debug_info.append(f"no-cols: {ds.storage_path} ({err})")
+                        continue
                     import re as _re
+                    rcols = []
                     for col in cols:
                         if col.startswith("roas_d"):
+                            rcols.append(col)
                             m = _re.search(r"roas_d(\d+)", col)
                             if m:
                                 days.add(int(m.group(1)))
-                except Exception:
+                    debug_info.append(f"{os.path.basename(ds.storage_path)} → roas cols: {', '.join(rcols[:20])}")
+                except Exception as e:
+                    debug_info.append(f"error: {e}")
                     continue
-            # Fallback if nothing discovered
-            return sorted(days) if days else [30]
+            return sorted(days) if days else [], debug_info
 
-        available_days = discover_target_days(selected_dataset_ids)
+        available_days, debug_info = discover_target_days(selected_dataset_ids)
         # Prefer D30 if present; else first available
         default_idx = available_days.index(30) if 30 in available_days else 0
         target_day = st.selectbox(
@@ -331,7 +345,13 @@ def show_model_training_tab():
             help="Targets are discovered from ROAS columns in your dataset(s)"
         )
         # Show what was discovered for clarity
-        st.caption(f"Available targets detected: {', '.join(['D'+str(d) for d in available_days])}")
+        if available_days:
+            st.caption(f"Available targets detected: {', '.join(['D'+str(d) for d in available_days])}")
+        else:
+            st.caption("No ROAS buckets detected from dataset schema; defaulting to D30. Use the checkbox below to show debug info.")
+            with st.expander("Debug: detected ROAS columns info"):
+                for line in debug_info:
+                    st.write(line)
         
         # Model parameters
         st.subheader("Model Parameters")
