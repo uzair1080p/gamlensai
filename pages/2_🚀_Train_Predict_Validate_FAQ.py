@@ -888,17 +888,27 @@ def show_faq_tab():
     st.subheader("Context Filters")
     col1, col2, col3, col4 = st.columns(4)
     
+    # Get actual data for filters
+    datasets = get_datasets()
+    models = get_model_versions()
+    
+    # Extract unique values for filters
+    games = ["All"] + sorted(list(set([d.game for d in datasets if d.game])))
+    platforms = ["All"] + sorted(list(set([d.source_platform.value for d in datasets if d.source_platform])))
+    channels = ["All"] + sorted(list(set([d.channel for d in datasets if d.channel])))
+    countries = ["All"] + sorted(list(set([country for d in datasets if d.countries for country in d.countries])))
+    
     with col1:
-        game_filter = st.selectbox("Game", ["All"], key="faq_game")
+        game_filter = st.selectbox("Game", games, key="faq_game")
     
     with col2:
-        platform_filter = st.selectbox("Platform", ["All"], key="faq_platform")
+        platform_filter = st.selectbox("Platform", platforms, key="faq_platform")
     
     with col3:
-        channel_filter = st.selectbox("Channel", ["All"], key="faq_channel")
+        channel_filter = st.selectbox("Channel", channels, key="faq_channel")
     
     with col4:
-        country_filter = st.selectbox("Country", ["All"], key="faq_country")
+        country_filter = st.selectbox("Country", countries, key="faq_country")
     
     # Custom question input
     st.subheader("Ask a Question")
@@ -925,40 +935,145 @@ def show_faq_tab():
         st.write("**Answer:**")
         st.write(answer)
     
-    # Predefined questions
+    # Predefined questions from client FAQ
     st.subheader("Common Questions")
     
-    questions = [
-        "What is the current model performance?",
-        "Which campaigns should we scale based on predictions?",
-        "How accurate are our ROAS predictions?",
-        "What are the top drivers of ROAS in our data?",
-        "What ROAS should we expect from our campaigns?",
-        "How confident should we be in our predictions?",
-        "What insights can you provide about our advertising data?"
-    ]
+    # Client's actual FAQ questions organized by category
+    faq_categories = {
+        "Performance & ROI": [
+            "When will ROI of 100% be achieved on this channel? D15? D30? D90?",
+            "Should we continue running this campaign or pause it?",
+            "What is the projected ROAS if we keep spending at the same pace?",
+            "Which channels are driving the highest quality players long-term?",
+            "How does actual performance compare to AI forecast from Day 3?"
+        ],
+        "User Acquisition & Cost": [
+            "What CPI do we need to hit to achieve profitability by D30/D90?",
+            "Which campaign is overspending without delivering value?",
+            "What's the optimal budget allocation across channels to maximize ROAS?",
+            "Which geo is giving us the lowest CPI with strong retention?",
+            "Which ad network/creative is driving the highest LTV users?"
+        ],
+        "Retention & Engagement": [
+            "What retention rate do we need at D7/D15 to hit D30 ROAS goals?",
+            "Which levels are causing the biggest drop-offs in player progression?",
+            "What's the predicted churn rate of players from this cohort?",
+            "If retention improves by X%, what impact will it have on revenue?",
+            "Which player segments are most likely to become high-value users?"
+        ],
+        "Revenue & Monetization": [
+            "What ARPU do we need by D15/D30 to achieve break-even?",
+            "Which country is monetizing best (highest ARPPU)?",
+            "Are players engaging more with IAP or ad monetization?",
+            "What changes in ad placement or IAP pricing can boost revenue?",
+            "If ARPU increases by $0.10, how will it affect D90 ROAS?"
+        ],
+        "Scaling & Strategy": [
+            "Which geo is ready to scale aggressively?",
+            "Which campaigns should we cut immediately?",
+            "If we double UA spend, what's the projected long-term ROI?",
+            "What's the safest budget increase to avoid overspending on bad cohorts?",
+            "Which channels are future-proof vs. short-term wins?"
+        ]
+    }
     
-    for question in questions:
-        with st.expander(question):
-            context_info = {
-                'model': selected_model.model_name if selected_model else None,
-                'dataset': selected_dataset.canonical_name if selected_dataset else None,
-                'filters': {
-                    'game': game_filter,
-                    'platform': platform_filter,
-                    'channel': channel_filter,
-                    'country': country_filter
+    # Display questions by category
+    for category, questions in faq_categories.items():
+        st.markdown(f"**{category}**")
+        for question in questions:
+            with st.expander(question):
+                context_info = {
+                    'model': selected_model.model_name if selected_model else None,
+                    'dataset': selected_dataset.canonical_name if selected_dataset else None,
+                    'filters': {
+                        'game': game_filter,
+                        'platform': platform_filter,
+                        'channel': channel_filter,
+                        'country': country_filter
+                    }
                 }
-            }
-            
-            answer = generate_faq_answer(question, context_info)
-            st.write(answer)
+                
+                answer = generate_faq_answer(question, context_info)
+                st.write(answer)
+        st.markdown("---")
 
 def generate_faq_answer(question: str, context: Dict[str, Any]) -> str:
     """Generate FAQ answer based on context"""
     question_lower = question.lower()
     
-    if "performance" in question_lower or "accuracy" in question_lower:
+    # Performance & ROI questions
+    if "roi" in question_lower and ("100%" in question or "d15" in question_lower or "d30" in question_lower or "d90" in question_lower):
+        if context['model'] and context['dataset']:
+            return f"To determine when ROI reaches 100% on this channel, run predictions using model '{context['model']}' on dataset '{context['dataset']}' in the Predictions tab. The system will show projected ROAS over time with confidence intervals to identify when break-even is achieved."
+        else:
+            return "Please select a model and dataset to get ROI projections. Go to the Model Training tab to train or select a model, then run predictions to see when 100% ROI will be achieved."
+    
+    elif "continue" in question_lower and ("campaign" in question_lower or "pause" in question_lower):
+        if context['model'] and context['dataset']:
+            return f"Campaign continuation recommendations are available in the Predictions tab using model '{context['model']}'. The system categorizes campaigns as Scale, Maintain, Reduce, or Cut based on predicted ROAS and confidence intervals."
+        else:
+            return "Please select a model and dataset to get campaign recommendations. Use the Model Training tab to make your selections, then check the Predictions tab for specific guidance."
+    
+    elif "projected roas" in question_lower or "spending at the same pace" in question_lower:
+        if context['model'] and context['dataset']:
+            return f"Projected ROAS at current spending pace is available in the Predictions tab using model '{context['model']}' on dataset '{context['dataset']}'. The system provides p10, p50, and p90 predictions to show expected performance ranges."
+        else:
+            return "Please select a model and dataset to get ROAS projections. Use the Model Training tab to make your selections, then run predictions to see expected performance."
+    
+    # User Acquisition & Cost questions
+    elif "cpi" in question_lower and ("profitability" in question_lower or "d30" in question_lower or "d90" in question_lower):
+        if context['model'] and context['dataset']:
+            return f"Target CPI for profitability can be calculated using model '{context['model']}' on dataset '{context['dataset']}'. Run predictions in the Predictions tab to see the relationship between CPI and projected ROAS, helping identify the maximum CPI for profitable campaigns."
+        else:
+            return "Please select a model and dataset to analyze CPI requirements. Use the Model Training tab to make your selections, then run predictions to see CPI vs ROAS relationships."
+    
+    elif "overspending" in question_lower or "without delivering value" in question_lower:
+        if context['model'] and context['dataset']:
+            return f"Campaigns that are overspending without delivering value will be identified in the Predictions tab using model '{context['model']}'. Look for campaigns with high spend but low predicted ROAS and wide confidence intervals."
+        else:
+            return "Please select a model and dataset to identify overspending campaigns. Use the Model Training tab to make your selections, then check the Predictions tab for campaign performance analysis."
+    
+    # Retention & Engagement questions
+    elif "retention rate" in question_lower and ("d7" in question_lower or "d15" in question_lower or "d30" in question_lower):
+        if context['model'] and context['dataset']:
+            return f"Required retention rates for D30 ROAS goals can be analyzed using model '{context['model']}' on dataset '{context['dataset']}'. Check the Model Training tab for feature importance to see how retention impacts ROAS predictions."
+        else:
+            return "Please select a model and dataset to analyze retention requirements. Use the Model Training tab to train a model and view feature importance, showing how retention rates affect ROAS predictions."
+    
+    elif "level" in question_lower and ("drop-off" in question_lower or "progression" in question_lower):
+        if context['model'] and context['dataset']:
+            return f"Level progression analysis is available using model '{context['model']}' on dataset '{context['dataset']}'. Check the Model Training tab for feature importance to see which level events most impact ROAS predictions."
+        else:
+            return "Please select a model and dataset to analyze level progression. Use the Model Training tab to train a model and view feature importance, showing which levels are most critical for ROAS."
+    
+    # Revenue & Monetization questions
+    elif "arpu" in question_lower and ("break-even" in question_lower or "d15" in question_lower or "d30" in question_lower):
+        if context['model'] and context['dataset']:
+            return f"Target ARPU for break-even can be calculated using model '{context['model']}' on dataset '{context['dataset']}'. Run predictions in the Predictions tab to see the relationship between revenue metrics and projected ROAS."
+        else:
+            return "Please select a model and dataset to analyze ARPU requirements. Use the Model Training tab to make your selections, then run predictions to see revenue vs ROAS relationships."
+    
+    elif "monetizing best" in question_lower or "highest arppu" in question_lower:
+        if context['model'] and context['dataset']:
+            return f"Country monetization analysis is available using model '{context['model']}' on dataset '{context['dataset']}'. Use the context filters above to select specific countries, then run predictions to compare monetization performance."
+        else:
+            return "Please select a model and dataset to analyze country monetization. Use the context filters above to select countries, then run predictions to compare performance."
+    
+    # Scaling & Strategy questions
+    elif "scale aggressively" in question_lower or "ready to scale" in question_lower:
+        if context['model'] and context['dataset']:
+            return f"Scaling recommendations are available in the Predictions tab using model '{context['model']}' on dataset '{context['dataset']}'. Look for campaigns with high predicted ROAS and narrow confidence intervals as candidates for aggressive scaling."
+        else:
+            return "Please select a model and dataset to get scaling recommendations. Use the Model Training tab to make your selections, then check the Predictions tab for specific guidance."
+    
+    elif "cut immediately" in question_lower or "campaigns should we cut" in question_lower:
+        if context['model'] and context['dataset']:
+            return f"Campaign cutting recommendations are available in the Predictions tab using model '{context['model']}' on dataset '{context['dataset']}'. Look for campaigns with low predicted ROAS and wide confidence intervals as candidates for immediate cuts."
+        else:
+            return "Please select a model and dataset to get cutting recommendations. Use the Model Training tab to make your selections, then check the Predictions tab for specific guidance."
+    
+    # General fallbacks
+    elif "performance" in question_lower or "accuracy" in question_lower:
         if context['model']:
             return f"Based on the selected model '{context['model']}', you can view detailed performance metrics in the Predictions tab. The model provides R², MAPE, RMSE, and MAE scores to evaluate prediction accuracy."
         else:
