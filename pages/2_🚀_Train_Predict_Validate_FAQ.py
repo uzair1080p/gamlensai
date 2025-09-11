@@ -199,7 +199,8 @@ def show_datasets_tab():
         game_filter = st.text_input("Filter by Game", placeholder="Enter game name...")
     
     with col3:
-        show_actions = st.checkbox("Show Actions", value=True)
+        # Always show actions (was toggle before)
+        show_actions = True
     
     # Get datasets
     datasets = get_datasets(
@@ -279,10 +280,15 @@ def show_model_training_tab():
             help="Predict ROAS for this day"
         )
         
-        # Dataset selection
+        # Dataset selection (only completed datasets with valid files)
         datasets = get_datasets()
-        if datasets:
-            dataset_options = {f"{d.canonical_name} ({d.records} records)": d.id for d in datasets}
+        valid_datasets = [
+            d for d in datasets
+            if getattr(d, 'ingest_completed_at', None) is not None and getattr(d, 'storage_path', None)
+               and os.path.exists(d.storage_path)
+        ]
+        if valid_datasets:
+            dataset_options = {f"{d.canonical_name} ({d.records} records)": d.id for d in valid_datasets}
             selected_dataset_names = st.multiselect(
                 "Select Datasets for Training",
                 list(dataset_options.keys()),
@@ -290,7 +296,7 @@ def show_model_training_tab():
             )
             selected_dataset_ids = [dataset_options[name] for name in selected_dataset_names]
         else:
-            st.warning("No datasets available. Upload some data first.")
+            st.warning("No completed datasets with available data files. Upload data on the Datasets tab and wait until Status shows Complete.")
             selected_dataset_ids = []
         
         # Model parameters
