@@ -116,7 +116,7 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
         PlatformEnum.UNITY_ADS: {
             'date': ['date', 'Date', 'DATE'],
             'installs': ['installs', 'Installs', 'INSTALLS', 'installs_count'],
-            'cost': ['cost', 'Cost', 'COST', 'spend', 'Spend', 'SPEND'],
+            'cost': ['cost', 'Cost', 'COST', 'spend', 'Spend', 'SPEND', 'adspend', 'AdSpend', 'ADSPEND'],
             'revenue': ['revenue', 'Revenue', 'REVENUE', 'ad_revenue'],
             'roas_d0': ['roas_d0', 'ROAS_D0', 'roas_0', 'ROAS_0'],
             'roas_d1': ['roas_d1', 'ROAS_D1', 'roas_1', 'ROAS_1'],
@@ -134,7 +134,7 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
         PlatformEnum.MISTPLAY: {
             'date': ['date', 'Date', 'DATE'],
             'installs': ['installs', 'Installs', 'INSTALLS', 'installs_count'],
-            'cost': ['cost', 'Cost', 'COST', 'spend', 'Spend', 'SPEND'],
+            'cost': ['cost', 'Cost', 'COST', 'spend', 'Spend', 'SPEND', 'adspend', 'AdSpend', 'ADSPEND'],
             'revenue': ['revenue', 'Revenue', 'REVENUE', 'ad_revenue'],
             'roas_d0': ['roas_d0', 'ROAS_D0', 'roas_0', 'ROAS_0'],
             'roas_d1': ['roas_d1', 'ROAS_D1', 'roas_1', 'ROAS_1'],
@@ -155,6 +155,30 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
                 df_normalized = df_normalized.rename(columns={col: target_col})
                 break
     
+    # Generic normalization for ROAS/Retention regardless of platform (case-insensitive)
+    import re as _re
+    rename_map: dict = {}
+    for col in list(df_normalized.columns):
+        col_str = str(col).strip()
+        lc = col_str.lower()
+        # ROAS_Dxx -> roas_dxx
+        m = _re.match(r"^roas[_\s]*d\s*(\d+)$", lc, flags=_re.IGNORECASE)
+        if m:
+            day = m.group(1)
+            rename_map[col] = f"roas_d{day}"
+            continue
+        # RETENTION_Dxx -> retention_dxx
+        m2 = _re.match(r"^retention[_\s]*d\s*(\d+)$", lc, flags=_re.IGNORECASE)
+        if m2:
+            day = m2.group(1)
+            rename_map[col] = f"retention_d{day}"
+            continue
+        # Common alt headers
+        if lc in ['adspend', 'ad_spend']:
+            rename_map[col] = 'cost'
+    if rename_map:
+        df_normalized = df_normalized.rename(columns=rename_map)
+
     # Ensure required columns exist
     required_columns = ['date', 'installs', 'cost', 'revenue']
     for col in required_columns:
