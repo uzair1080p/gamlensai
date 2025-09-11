@@ -10,8 +10,8 @@ ssh your-username@your-server-ip
 # Update system
 sudo apt update && sudo apt upgrade -y
 
-# Install Python 3.9+ and pip
-sudo apt install python3.9 python3.9-venv python3-pip -y
+# Install Python 3+ and pip
+sudo apt install python3 python3-venv python3-pip -y
 
 # Install PostgreSQL (recommended for production)
 sudo apt install postgresql postgresql-contrib -y
@@ -27,7 +27,7 @@ git clone https://github.com/uzair1080p/gamlensai.git
 cd gamlensai
 
 # Create virtual environment
-python3.9 -m venv gamlens_env
+python3 -m venv gamlens_env
 source gamlens_env/bin/activate
 
 # Install dependencies

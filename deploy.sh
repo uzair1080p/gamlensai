@@ -24,7 +24,7 @@ if [[ $EUID -eq 0 ]]; then
     apt update && apt upgrade -y
     
     # Install system dependencies
-    apt install -y python3.9 python3.9-venv python3-pip build-essential libpq-dev
+    apt install -y python3 python3-venv python3-pip build-essential libpq-dev
     
     # Install PostgreSQL for production
     if [ "$DEPLOYMENT_MODE" = "production" ]; then
@@ -58,7 +58,7 @@ echo "📁 Setting up application..."
 
 # Create virtual environment
 if [ ! -d "gamlens_env" ]; then
-    python3.9 -m venv gamlens_env
+    python3 -m venv gamlens_env
     echo "✅ Created virtual environment"
 fi
 

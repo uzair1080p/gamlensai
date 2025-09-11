@@ -59,10 +59,10 @@ OPENAI_API_KEY=your_openai_api_key_here
 ```bash
 # 1. Install dependencies
 sudo apt update
-sudo apt install python3.9 python3.9-venv python3-pip -y
+sudo apt install python3 python3-venv python3-pip -y
 
 # 2. Setup application
-python3.9 -m venv gamlens_env
+python3 -m venv gamlens_env
 source gamlens_env/bin/activate
 pip install -r requirements.txt
 
