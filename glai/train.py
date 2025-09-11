@@ -304,12 +304,18 @@ def train_lgbm_quantile(
             str(sorted(feature_names)).encode()
         ).hexdigest()
         
+        # Normalize dataset ids to strings for JSON serializable storage
+        try:
+            norm_dataset_ids = [str(x) for x in dataset_ids]
+        except Exception:
+            norm_dataset_ids = dataset_ids
+
         # Create model version record
         model_version = ModelVersion(
             model_name=model_name,
             version=next_version,
             target_day=target_day,
-            train_dataset_ids=dataset_ids,
+            train_dataset_ids=norm_dataset_ids,
             feature_set_fingerprint=feature_set_fingerprint,
             train_end_date=max_end_date or date.today(),
             metrics_json=metrics,
