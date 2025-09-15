@@ -831,11 +831,24 @@ def show_predictions_tab():
                 # Display table
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
-                # Create explicit display columns from normalized data
+                # Parse currency strings for display - same logic as GPT uses
+                def parse_currency_display(val):
+                    if pd.isna(val) or val == '' or val == '$-':
+                        return 0.0
+                    try:
+                        # Remove currency symbols and parse
+                        clean_val = str(val).replace('$', '').replace(',', '').strip()
+                        if clean_val == '' or clean_val == '-':
+                            return 0.0
+                        return float(clean_val)
+                    except:
+                        return 0.0
+                
+                # Create explicit display columns with parsed currency values
                 if 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = gpt_display['cost'].round(2)
+                    gpt_display['Cost'] = gpt_display['cost'].apply(parse_currency_display).round(2)
                 if 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = gpt_display['revenue'].round(2)
+                    gpt_display['Revenue'] = gpt_display['revenue'].apply(parse_currency_display).round(2)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))

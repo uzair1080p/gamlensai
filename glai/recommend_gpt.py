@@ -109,7 +109,9 @@ def get_gpt_recommendations(
         "with various column formats - parse currency strings like '$78.00', '$-', "
         "and numeric values yourself. Consider: predicted ROAS (p50), uncertainty, "
         "unit economics, and spend. If ROAS columns are missing, calculate ROAS "
-        "from cost/revenue data. Always be concise and actionable."
+        "from cost/revenue data. Always be concise and actionable. "
+        "IMPORTANT: You MUST provide recommendations for ALL campaigns in the data. "
+        "Do not skip any campaigns - analyze each one and provide an action."
     )
 
     user = (
@@ -118,6 +120,8 @@ def get_gpt_recommendations(
         "Guidelines: Favor Scale when ROAS >= 1.5 with narrow uncertainty; Maintain when near 1.0 and stable; "
         "Reduce when < 1.0 but promising; Cut when clearly unprofitable or highly uncertain.\n"
         "Parse currency strings like '$78.00' as 78.0, '$-' as 0.0. Calculate ROAS = revenue/cost.\n"
+        "CRITICAL: You must analyze EVERY campaign and provide a recommendation. "
+        "If cost is '$-' or 0, classify as 'Cut'. If revenue is '$-' or 0, be conservative.\n"
         f"Dataset summary: {json.dumps(meta)}\n"
         f"Campaign slice (max {limit} rows, prioritized by spend): {json.dumps(rows)}"
     )
