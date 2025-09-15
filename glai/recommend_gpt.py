@@ -47,63 +47,22 @@ def _summarize_dataframe(pred_df: pd.DataFrame) -> Dict[str, Any]:
 def _build_compact_payload(pred_df: pd.DataFrame, limit: int = 200) -> List[Dict[str, Any]]:
     """Build a compact list of campaign dicts for the prompt.
 
-    Only include the columns the model needs to reason about the decision to
-    keep token usage low. Limit rows to `limit` for safety; the caller can pass
-    a higher value if desired.
+    Send raw data to GPT and let it parse columns itself - no preprocessing.
+    Limit rows to `limit` for safety; the caller can pass a higher value if desired.
     """
-    # Core fields
-    base_candidates: List[str] = [
-        "row_index",
-        "predicted_roas_p50",
-        "predicted_roas_p10",
-        "predicted_roas_p90",
-        "confidence_interval",
-        "cost",
-        "revenue",
-        "ad_revenue",
-        "installs",
-    ]
-    cols: List[str] = [c for c in base_candidates if c in pred_df.columns]
-
-    # Add useful observed columns if available (roas_d*, retention_*, level_* aggregates)
-    for pattern in ["roas_d", "retention_", "level_"]:
-        for c in pred_df.columns:
-            if isinstance(c, str) and c.startswith(pattern):
-                cols.append(c)
-
-    # De-duplicate while preserving order
-    seen = set()
-    cols = [x for x in cols if not (x in seen or seen.add(x))]
-    # Prioritize top spend rows if cost exists, then append remaining head
-    # Sanitize currency-like strings to numerics for key fields
-    df_num = pred_df.copy()
-    for col in ["cost", "revenue", "ad_revenue"]:
-        if col in df_num.columns:
-            try:
-                df_num[col] = pd.to_numeric(df_num[col]
-                                            .astype(str)
-                                            .str.replace(r"[^0-9.\-]", "", regex=True), errors="coerce").fillna(0)
-            except Exception:
-                pass
-
-    source = df_num
-    if "cost" in source.columns:
-        try:
-            source = source.sort_values("cost", ascending=False)
-        except Exception:
-            pass
-    compact = source[cols].head(limit).copy()
-    # Provide derived metrics when possible
-    if "cost" in compact.columns and "installs" in compact.columns and "cpi" not in compact.columns:
-        try:
-            compact["cpi"] = (pd.to_numeric(compact["cost"], errors="coerce") / (pd.to_numeric(compact["installs"], errors="coerce") + 1e-9)).fillna(0.0)
-        except Exception:
-            pass
-    # Ensure basic types for JSON
-    for c in compact.columns:
-        if isinstance(compact[c].dtype, pd.api.extensions.ExtensionDtype):
-            compact[c] = compact[c].astype(object)
-    return compact.to_dict(orient="records")
+    # Take top rows by any numeric column that might indicate spend/volume
+    source = pred_df.head(limit).copy()
+    
+    # Convert to raw dict format for GPT to interpret - send everything as strings
+    raw_data = []
+    for _, row in source.iterrows():
+        raw_row = {}
+        for col, val in row.items():
+            # Convert everything to string, let GPT figure out the data types
+            raw_row[col] = str(val) if val is not None else ""
+        raw_data.append(raw_row)
+    
+    return raw_data
 
 
 def get_gpt_recommendations(
@@ -146,18 +105,19 @@ def get_gpt_recommendations(
     system = (
         "You are a senior growth analyst optimizing mobile game UA. "
         "Your task is to classify campaigns into: Scale, Maintain, Reduce, Cut, "
-        "and suggest an optional budget delta. Consider: predicted ROAS (p50), "
-        "uncertainty (p90-p10 or confidence_interval), unit economics, and spend. "
-        "If ROAS columns are missing, infer from cost, revenue and any available "
-        "signals conservatively. Always be concise and actionable."
+        "and suggest an optional budget delta. You will receive raw campaign data "
+        "with various column formats - parse currency strings like '$78.00', '$-', "
+        "and numeric values yourself. Consider: predicted ROAS (p50), uncertainty, "
+        "unit economics, and spend. If ROAS columns are missing, calculate ROAS "
+        "from cost/revenue data. Always be concise and actionable."
     )
 
     user = (
         "Decide actions for the campaigns below. Return STRICT JSON only, schema:"
         "\n{\n  \"recommendations\": [\n    {\n      \"row_index\": int,\n      \"action\": one of [\"Scale\", \"Maintain\", \"Reduce\", \"Cut\"],\n      \"rationale\": short, <= 20 words,\n      \"budget_change_pct\": number between -100 and 200 (optional)\n    }\n  ]\n}\n"
-        "Guidelines: Favor Scale when p50 >= 1.5 with narrow uncertainty; Maintain when near 1.0 and stable; "
+        "Guidelines: Favor Scale when ROAS >= 1.5 with narrow uncertainty; Maintain when near 1.0 and stable; "
         "Reduce when < 1.0 but promising; Cut when clearly unprofitable or highly uncertain.\n"
-        "Important: cost and revenue are NUMERIC; do NOT treat them as strings.\n"
+        "Parse currency strings like '$78.00' as 78.0, '$-' as 0.0. Calculate ROAS = revenue/cost.\n"
         f"Dataset summary: {json.dumps(meta)}\n"
         f"Campaign slice (max {limit} rows, prioritized by spend): {json.dumps(rows)}"
     )
