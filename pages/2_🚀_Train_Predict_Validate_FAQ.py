@@ -833,12 +833,17 @@ def show_predictions_tab():
                             ).fillna(0.0)
                         except Exception:
                             pass
-                # If revenue is empty but ad_revenue exists, use ad_revenue as revenue proxy
+                # If revenue is empty but ad_revenue exists, compute explicit numeric fields
                 if 'revenue' in gpt_df.columns and 'ad_revenue' in gpt_df.columns:
                     try:
                         rev_num = pd.to_numeric(gpt_df['revenue'], errors='coerce').fillna(0.0)
                         ad_rev_num = pd.to_numeric(gpt_df['ad_revenue'], errors='coerce').fillna(0.0)
-                        gpt_df['revenue'] = rev_num.where(rev_num > 0, ad_rev_num)
+                        gpt_df['revenue_num'] = rev_num.where(rev_num > 0, ad_rev_num)
+                    except Exception:
+                        pass
+                if 'cost' in gpt_df.columns:
+                    try:
+                        gpt_df['cost_num'] = pd.to_numeric(gpt_df['cost'], errors='coerce').fillna(0.0)
                     except Exception:
                         pass
 
@@ -849,9 +854,13 @@ def show_predictions_tab():
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
                 # Create explicit display columns to avoid confusion
-                if 'cost' in gpt_display.columns:
+                if 'cost_num' in gpt_display.columns:
+                    gpt_display['Cost'] = pd.to_numeric(gpt_display['cost_num'], errors='coerce').fillna(0.0).round(2)
+                elif 'cost' in gpt_display.columns:
                     gpt_display['Cost'] = pd.to_numeric(gpt_display['cost'], errors='coerce').fillna(0.0).round(2)
-                if 'revenue' in gpt_display.columns:
+                if 'revenue_num' in gpt_display.columns:
+                    gpt_display['Revenue'] = pd.to_numeric(gpt_display['revenue_num'], errors='coerce').fillna(0.0).round(2)
+                elif 'revenue' in gpt_display.columns:
                     gpt_display['Revenue'] = pd.to_numeric(gpt_display['revenue'], errors='coerce').fillna(0.0).round(2)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
