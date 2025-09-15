@@ -51,18 +51,29 @@ def _build_compact_payload(pred_df: pd.DataFrame, limit: int = 200) -> List[Dict
     keep token usage low. Limit rows to `limit` for safety; the caller can pass
     a higher value if desired.
     """
-    cols: List[str] = [
-        c for c in [
-            "row_index",
-            "predicted_roas_p50",
-            "predicted_roas_p10",
-            "predicted_roas_p90",
-            "confidence_interval",
-            "cost",
-            "revenue",
-        ]
-        if c in pred_df.columns
+    # Core fields
+    base_candidates: List[str] = [
+        "row_index",
+        "predicted_roas_p50",
+        "predicted_roas_p10",
+        "predicted_roas_p90",
+        "confidence_interval",
+        "cost",
+        "revenue",
+        "ad_revenue",
+        "installs",
     ]
+    cols: List[str] = [c for c in base_candidates if c in pred_df.columns]
+
+    # Add useful observed columns if available (roas_d*, retention_*, level_* aggregates)
+    for pattern in ["roas_d", "retention_", "level_"]:
+        for c in pred_df.columns:
+            if isinstance(c, str) and c.startswith(pattern):
+                cols.append(c)
+
+    # De-duplicate while preserving order
+    seen = set()
+    cols = [x for x in cols if not (x in seen or seen.add(x))]
     # Prioritize top spend rows if cost exists, then append remaining head
     source = pred_df
     if "cost" in source.columns:
@@ -71,6 +82,12 @@ def _build_compact_payload(pred_df: pd.DataFrame, limit: int = 200) -> List[Dict
         except Exception:
             pass
     compact = source[cols].head(limit).copy()
+    # Provide derived metrics when possible
+    if "cost" in compact.columns and "installs" in compact.columns and "cpi" not in compact.columns:
+        try:
+            compact["cpi"] = (pd.to_numeric(compact["cost"], errors="coerce") / (pd.to_numeric(compact["installs"], errors="coerce") + 1e-9)).fillna(0.0)
+        except Exception:
+            pass
     # Ensure basic types for JSON
     for c in compact.columns:
         if isinstance(compact[c].dtype, pd.api.extensions.ExtensionDtype):

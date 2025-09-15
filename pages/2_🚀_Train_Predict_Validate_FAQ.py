@@ -813,15 +813,16 @@ def show_predictions_tab():
         # GPT-only path: no local predictions available but GPT was requested
         if force_gpt:
             try:
-                st.info("Using GPT-5 recommendations without local predictions.")
+                st.info("Using AI recommendations without local predictions.")
                 base_df = load_dataset_data(selected_dataset)
-                # Build a minimal frame aligned with recommender expectations
-                gpt_df = pd.DataFrame({
-                    'row_index': range(len(base_df))
-                })
-                for col in ['cost', 'revenue']:
-                    if col in base_df.columns:
-                        gpt_df[col] = base_df[col].values
+                # Build a payload aligned with recommender expectations (include more columns)
+                gpt_df = pd.DataFrame({'row_index': range(len(base_df))})
+                for col in base_df.columns:
+                    if col not in gpt_df.columns:
+                        try:
+                            gpt_df[col] = base_df[col].values
+                        except Exception:
+                            pass
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
                     gpt_map = get_gpt_recommendations(gpt_df)
