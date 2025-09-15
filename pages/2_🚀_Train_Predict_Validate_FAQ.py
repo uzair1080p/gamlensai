@@ -823,29 +823,20 @@ def show_predictions_tab():
                             gpt_df[col] = base_df[col].values
                         except Exception:
                             pass
-                # Numeric coercion for currency-like strings so both display and GPT align
-                for col in ['cost', 'revenue', 'ad_revenue']:
-                    if col in gpt_df.columns:
-                        try:
-                            gpt_df[col] = pd.to_numeric(
-                                gpt_df[col].astype(str).str.replace(r"[^0-9.\-]", "", regex=True),
-                                errors='coerce'
-                            ).fillna(0.0)
-                        except Exception:
-                            pass
-                # If revenue is empty but ad_revenue exists, compute explicit numeric fields
-                if 'revenue' in gpt_df.columns and 'ad_revenue' in gpt_df.columns:
-                    try:
-                        rev_num = pd.to_numeric(gpt_df['revenue'], errors='coerce').fillna(0.0)
-                        ad_rev_num = pd.to_numeric(gpt_df['ad_revenue'], errors='coerce').fillna(0.0)
-                        gpt_df['revenue_num'] = rev_num.where(rev_num > 0, ad_rev_num)
-                    except Exception:
-                        pass
+                # Parse and OVERWRITE cost/revenue strings into numeric fields used by AI and display
+                def _parse_currency(series):
+                    return pd.to_numeric(series.astype(str).str.replace(r"[^0-9.\-]", "", regex=True), errors='coerce').fillna(0.0)
+
                 if 'cost' in gpt_df.columns:
-                    try:
-                        gpt_df['cost_num'] = pd.to_numeric(gpt_df['cost'], errors='coerce').fillna(0.0)
-                    except Exception:
-                        pass
+                    gpt_df['cost'] = _parse_currency(gpt_df['cost'])
+                if 'revenue' in gpt_df.columns:
+                    gpt_df['revenue'] = _parse_currency(gpt_df['revenue'])
+                if 'ad_revenue' in gpt_df.columns:
+                    gpt_df['ad_revenue'] = _parse_currency(gpt_df['ad_revenue'])
+
+                # If revenue is empty but ad_revenue exists, use ad_revenue as fallback directly in 'revenue'
+                if 'revenue' in gpt_df.columns and 'ad_revenue' in gpt_df.columns:
+                    gpt_df['revenue'] = gpt_df['revenue'].where(gpt_df['revenue'] > 0, gpt_df['ad_revenue'])
 
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
