@@ -823,20 +823,7 @@ def show_predictions_tab():
                             gpt_df[col] = base_df[col].values
                         except Exception:
                             pass
-                # Parse and OVERWRITE cost/revenue strings into numeric fields used by AI and display
-                def _parse_currency(series):
-                    return pd.to_numeric(series.astype(str).str.replace(r"[^0-9.\-]", "", regex=True), errors='coerce').fillna(0.0)
-
-                if 'cost' in gpt_df.columns:
-                    gpt_df['cost'] = _parse_currency(gpt_df['cost'])
-                if 'revenue' in gpt_df.columns:
-                    gpt_df['revenue'] = _parse_currency(gpt_df['revenue'])
-                if 'ad_revenue' in gpt_df.columns:
-                    gpt_df['ad_revenue'] = _parse_currency(gpt_df['ad_revenue'])
-
-                # If revenue is empty but ad_revenue exists, use ad_revenue as fallback directly in 'revenue'
-                if 'revenue' in gpt_df.columns and 'ad_revenue' in gpt_df.columns:
-                    gpt_df['revenue'] = gpt_df['revenue'].where(gpt_df['revenue'] > 0, gpt_df['ad_revenue'])
+                # Data is already normalized in the dataset loader, no need to re-parse
 
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
@@ -844,15 +831,11 @@ def show_predictions_tab():
                 # Display table
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
-                # Create explicit display columns to avoid confusion
-                if 'cost_num' in gpt_display.columns:
-                    gpt_display['Cost'] = pd.to_numeric(gpt_display['cost_num'], errors='coerce').fillna(0.0).round(2)
-                elif 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = pd.to_numeric(gpt_display['cost'], errors='coerce').fillna(0.0).round(2)
-                if 'revenue_num' in gpt_display.columns:
-                    gpt_display['Revenue'] = pd.to_numeric(gpt_display['revenue_num'], errors='coerce').fillna(0.0).round(2)
-                elif 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = pd.to_numeric(gpt_display['revenue'], errors='coerce').fillna(0.0).round(2)
+                # Create explicit display columns from normalized data
+                if 'cost' in gpt_display.columns:
+                    gpt_display['Cost'] = gpt_display['cost'].round(2)
+                if 'revenue' in gpt_display.columns:
+                    gpt_display['Revenue'] = gpt_display['revenue'].round(2)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
