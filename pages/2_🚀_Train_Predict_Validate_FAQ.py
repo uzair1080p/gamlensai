@@ -566,8 +566,8 @@ def show_predictions_tab():
     selected_dataset = st.session_state.get('selected_dataset')
     force_gpt = st.session_state.pop('force_gpt', False)
     
-    if not selected_model or not selected_dataset:
-        st.warning("Please select a model and dataset from the Model Training tab.")
+    if not selected_dataset:
+        st.warning("Please select a dataset from the Model Training tab.")
         return
     
     st.subheader("Current Selection")
@@ -772,7 +772,40 @@ def show_predictions_tab():
         except Exception as e:
             st.error(f"❌ Error loading predictions: {str(e)}")
     else:
-        st.info("No predictions found. Run predictions to see results here.")
+        # GPT-only path: no local predictions available but GPT was requested
+        if force_gpt:
+            try:
+                st.info("Using GPT-5 recommendations without local predictions.")
+                base_df = load_dataset_data(selected_dataset)
+                # Build a minimal frame aligned with recommender expectations
+                gpt_df = pd.DataFrame({
+                    'row_index': range(len(base_df))
+                })
+                for col in ['cost', 'revenue']:
+                    if col in base_df.columns:
+                        gpt_df[col] = base_df[col].values
+                # Call GPT recommender
+                with st.spinner("Calling GPT for campaign-level recommendations..."):
+                    gpt_map = get_gpt_recommendations(gpt_df)
+                # Display table
+                gpt_display = gpt_df.copy()
+                gpt_display['Campaign'] = gpt_display.index + 1
+                gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
+                gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
+                gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
+                cols = ['Campaign']
+                if 'cost' in gpt_display.columns:
+                    cols.append('cost')
+                if 'revenue' in gpt_display.columns:
+                    cols.append('revenue')
+                cols += ['GPT Action', 'GPT Rationale']
+                if 'GPT Budget %' in gpt_display.columns:
+                    cols.append('GPT Budget %')
+                st.dataframe(gpt_display[cols], use_container_width=True)
+            except Exception as e:
+                st.error(f"❌ GPT-only recommendations failed: {e}")
+        else:
+            st.info("No predictions found. Run predictions to see results here.")
 
 def show_validation_tab():
     """Show validation tab"""
