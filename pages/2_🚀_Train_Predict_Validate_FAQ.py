@@ -434,6 +434,9 @@ def show_model_training_tab():
             models = get_model_versions()
             if models:
                 model_options = {f"{m.model_name} v{m.version} (D{m.target_day})": m.id for m in models}
+                # Add a pseudo-model option for GPT recommendations
+                GPT_OPTION_LABEL = "GPT-5 (LLM recommendations)"
+                model_options[GPT_OPTION_LABEL] = "__gpt__"
                 selected_model_name = st.selectbox(
                     "Select Model for Predictions",
                     list(model_options.keys())
@@ -452,21 +455,30 @@ def show_model_training_tab():
                     if st.button("🎯 Run Predictions", type="primary"):
                         with st.spinner("Running predictions..."):
                             try:
-                                prediction_run = run_predictions(
-                                    selected_model_id,
-                                    selected_pred_dataset_id,
-                                    targets=[target_day]
-                                )
-                                
-                                st.success("✅ Predictions completed!")
-                                st.write(f"Prediction Run ID: {str(prediction_run.id)[:8]}...")
-                                st.write(f"Rows processed: {prediction_run.n_rows}")
-                                
-                                # Auto-select for predictions tab
-                                st.session_state['selected_model'] = get_model_version_by_id(selected_model_id)
-                                st.session_state['selected_dataset'] = get_dataset_by_id(selected_pred_dataset_id)
-                                st.session_state['active_tab'] = "Predictions"
-                                st.rerun()
+                                if selected_model_id == "__gpt__":
+                                    # Route to Predictions tab with GPT augmentation enabled
+                                    st.session_state['selected_model'] = None
+                                    st.session_state['selected_dataset'] = get_dataset_by_id(selected_pred_dataset_id)
+                                    st.session_state['force_gpt'] = True
+                                    st.session_state['active_tab'] = "Predictions"
+                                    st.success("✅ Switched to Predictions with GPT recommendations enabled.")
+                                    st.rerun()
+                                else:
+                                    prediction_run = run_predictions(
+                                        selected_model_id,
+                                        selected_pred_dataset_id,
+                                        targets=[target_day]
+                                    )
+                                    
+                                    st.success("✅ Predictions completed!")
+                                    st.write(f"Prediction Run ID: {str(prediction_run.id)[:8]}...")
+                                    st.write(f"Rows processed: {prediction_run.n_rows}")
+                                    
+                                    # Auto-select for predictions tab
+                                    st.session_state['selected_model'] = get_model_version_by_id(selected_model_id)
+                                    st.session_state['selected_dataset'] = get_dataset_by_id(selected_pred_dataset_id)
+                                    st.session_state['active_tab'] = "Predictions"
+                                    st.rerun()
                                 
                             except Exception as e:
                                 st.error(f"❌ Prediction failed: {str(e)}")
@@ -552,6 +564,7 @@ def show_predictions_tab():
     
     selected_model = st.session_state.get('selected_model')
     selected_dataset = st.session_state.get('selected_dataset')
+    force_gpt = st.session_state.pop('force_gpt', False)
     
     if not selected_model or not selected_dataset:
         st.warning("Please select a model and dataset from the Model Training tab.")
@@ -560,8 +573,12 @@ def show_predictions_tab():
     st.subheader("Current Selection")
     col1, col2 = st.columns(2)
     with col1:
-        st.write(f"**Model:** {selected_model.model_name} v{selected_model.version}")
-        st.write(f"**Target Day:** D{selected_model.target_day}")
+        if selected_model:
+            st.write(f"**Model:** {selected_model.model_name} v{selected_model.version}")
+            st.write(f"**Target Day:** D{selected_model.target_day}")
+        elif force_gpt:
+            st.write("**Model:** GPT-5 (LLM recommendations)")
+            st.write("**Target Day:** N/A (augmentation only)")
     with col2:
         st.write(f"**Dataset:** {selected_dataset.canonical_name}")
         st.write(f"**Records:** {selected_dataset.records}")
@@ -585,10 +602,12 @@ def show_predictions_tab():
     # Show existing predictions
     st.subheader("Prediction Results")
     
-    prediction_runs = get_prediction_runs(
-        model_version_id=str(selected_model.id),
-        dataset_id=str(selected_dataset.id)
-    )
+    prediction_runs = []
+    if selected_model:
+        prediction_runs = get_prediction_runs(
+            model_version_id=str(selected_model.id),
+            dataset_id=str(selected_dataset.id)
+        )
     
     if prediction_runs:
         latest_run = prediction_runs[0]  # Most recent
@@ -638,7 +657,8 @@ def show_predictions_tab():
             display_df['Action'] = display_df['row_index'].map(action_mapping)
 
             # Optional: Augment with GPT-powered recommendations
-            use_gpt = st.checkbox("Augment with GPT recommendations", value=False,
+            default_gpt = True if force_gpt else False
+            use_gpt = st.checkbox("Augment with GPT recommendations", value=default_gpt,
                                    help="Calls GPT to provide an additional 'GPT Action' and rationale per campaign.")
             gpt_map = {}
             if use_gpt:
