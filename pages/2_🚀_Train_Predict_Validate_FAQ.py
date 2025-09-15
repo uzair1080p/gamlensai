@@ -833,20 +833,34 @@ def show_predictions_tab():
                             ).fillna(0.0)
                         except Exception:
                             pass
+                # If revenue is empty but ad_revenue exists, use ad_revenue as revenue proxy
+                if 'revenue' in gpt_df.columns and 'ad_revenue' in gpt_df.columns:
+                    try:
+                        rev_num = pd.to_numeric(gpt_df['revenue'], errors='coerce').fillna(0.0)
+                        ad_rev_num = pd.to_numeric(gpt_df['ad_revenue'], errors='coerce').fillna(0.0)
+                        gpt_df['revenue'] = rev_num.where(rev_num > 0, ad_rev_num)
+                    except Exception:
+                        pass
+
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
                     gpt_map = get_gpt_recommendations(gpt_df)
                 # Display table
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
+                # Create explicit display columns to avoid confusion
+                if 'cost' in gpt_display.columns:
+                    gpt_display['Cost'] = pd.to_numeric(gpt_display['cost'], errors='coerce').fillna(0.0).round(2)
+                if 'revenue' in gpt_display.columns:
+                    gpt_display['Revenue'] = pd.to_numeric(gpt_display['revenue'], errors='coerce').fillna(0.0).round(2)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
                 cols = ['Campaign']
-                if 'cost' in gpt_display.columns:
-                    cols.append('cost')
-                if 'revenue' in gpt_display.columns:
-                    cols.append('revenue')
+                if 'Cost' in gpt_display.columns:
+                    cols.append('Cost')
+                if 'Revenue' in gpt_display.columns:
+                    cols.append('Revenue')
                 cols += ['GPT Action', 'GPT Rationale']
                 if 'GPT Budget %' in gpt_display.columns:
                     cols.append('GPT Budget %')
