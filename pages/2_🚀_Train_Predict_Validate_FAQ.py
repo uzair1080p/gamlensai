@@ -28,6 +28,7 @@ from glai.train import train_lgbm_quantile, get_model_versions, get_model_versio
 from glai.predict import run_predictions, get_prediction_runs, load_predictions, generate_recommendations
 from glai.naming import make_canonical_name
 from glai.faq_gpt import get_faq_gpt
+from glai.recommend_gpt import get_gpt_recommendations
 
 # Page configuration
 st.set_page_config(
@@ -635,6 +636,19 @@ def show_predictions_tab():
                     action_mapping[campaign['row_index']] = action.title()
             
             display_df['Action'] = display_df['row_index'].map(action_mapping)
+
+            # Optional: Augment with GPT-powered recommendations
+            use_gpt = st.checkbox("Augment with GPT recommendations", value=False,
+                                   help="Calls GPT to provide an additional 'GPT Action' and rationale per campaign.")
+            gpt_map = {}
+            if use_gpt:
+                with st.spinner("Calling GPT for campaign-level recommendations..."):
+                    gpt_map = get_gpt_recommendations(pred_df)
+                if gpt_map:
+                    display_df['GPT Action'] = display_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
+                    display_df['GPT Rationale'] = display_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
+                    if 'budget_change_pct' in next(iter(gpt_map.values()), {}):
+                        display_df['GPT Budget %'] = display_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
             
             # Select columns for display
             display_columns = ['Campaign', 'Predicted ROAS (p50)', 'p10', 'p90', 'Confidence Interval', 'Action']
@@ -642,6 +656,12 @@ def show_predictions_tab():
                 display_columns.insert(-1, 'cost')
             if 'revenue' in display_df.columns:
                 display_columns.insert(-1, 'revenue')
+            if 'GPT Action' in display_df.columns:
+                display_columns.append('GPT Action')
+            if 'GPT Rationale' in display_df.columns:
+                display_columns.append('GPT Rationale')
+            if 'GPT Budget %' in display_df.columns:
+                display_columns.append('GPT Budget %')
             
             st.dataframe(display_df[display_columns], use_container_width=True)
             
