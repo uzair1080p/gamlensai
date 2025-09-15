@@ -453,8 +453,8 @@ def show_model_training_tab():
             models = get_model_versions()
             if models:
                 model_options = {f"{m.model_name} v{m.version} (D{m.target_day})": m.id for m in models}
-                # Add a pseudo-model option for GPT recommendations
-                GPT_OPTION_LABEL = "GPT-5 (LLM recommendations)"
+                # Add a pseudo-model option for AI recommendations (neutral naming)
+                GPT_OPTION_LABEL = "Adaptive AI Recommendations"
                 model_options[GPT_OPTION_LABEL] = "__gpt__"
                 selected_model_name = st.selectbox(
                     "Select Model for Predictions",
@@ -596,7 +596,7 @@ def show_predictions_tab():
             st.write(f"**Model:** {selected_model.model_name} v{selected_model.version}")
             st.write(f"**Target Day:** D{selected_model.target_day}")
         elif force_gpt:
-            st.write("**Model:** GPT-5 (LLM recommendations)")
+            st.write("**Model:** Adaptive AI Recommendations")
             st.write("**Target Day:** N/A (augmentation only)")
     with col2:
         st.write(f"**Dataset:** {selected_dataset.canonical_name}")
@@ -821,6 +821,35 @@ def show_predictions_tab():
                 if 'GPT Budget %' in gpt_display.columns:
                     cols.append('GPT Budget %')
                 st.dataframe(gpt_display[cols], use_container_width=True)
+
+                # Auto-answer client FAQs using current context + GPT outputs
+                st.subheader("AI Answers to Client FAQs")
+                faq_gpt = get_faq_gpt()
+                context = faq_gpt.generate_context_summary(
+                    selected_model=None,
+                    selected_dataset=selected_dataset,
+                    filters=None
+                )
+                # Inject a lightweight summary of recommendations into context
+                context["ai_recommendations"] = {
+                    "count": int(len(gpt_map)),
+                    "actions_breakdown": {
+                        k: sum(1 for v in gpt_map.values() if v.get('action') == k)
+                        for k in ["Scale", "Maintain", "Reduce", "Cut"]
+                    }
+                }
+                client_questions = [
+                    "When will ROI of 100% be achieved on this channel? D15? D30? D90?",
+                    "Should we continue running this campaign or pause it?",
+                    "What is the projected ROAS if we keep spending at the same pace?",
+                    "Which channels are driving the highest quality players long-term?",
+                    "How does actual performance compare to AI forecast from Day 3?"
+                ]
+                for q in client_questions:
+                    with st.expander(q):
+                        with st.spinner("Generating..."):
+                            ans = faq_gpt.generate_faq_answer(q, context)
+                        st.write(ans)
             except Exception as e:
                 st.error(f"❌ GPT-only recommendations failed: {e}")
         else:
