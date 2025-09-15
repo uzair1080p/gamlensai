@@ -135,7 +135,7 @@ def get_gpt_recommendations(
         if OpenAI is None or not api_key:
             return {}
         client = OpenAI(api_key=api_key)
-    model_name = model or os.getenv("OPENAI_MODEL", "gpt-5")
+    model_name = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     rows = _build_compact_payload(pred_df, limit=limit)
     if not rows:
@@ -174,14 +174,15 @@ def get_gpt_recommendations(
         )
         text = resp.output_text  # type: ignore[attr-defined]
     except Exception:
-        # Fallback to empty mapping if API fails
-        return {}
+        text = ""
 
-    try:
-        data = json.loads(text)
-        recs = data.get("recommendations", [])
-    except Exception:
-        return {}
+    recs = []
+    if text:
+        try:
+            data = json.loads(text)
+            recs = data.get("recommendations", [])
+        except Exception:
+            recs = []
 
     out: Dict[int, Dict[str, Any]] = {}
     for rec in recs:
@@ -196,6 +197,41 @@ def get_gpt_recommendations(
             out[idx] = payload
         except Exception:
             continue
-    return out
+    if out:
+        return out
+
+    # Heuristic fallback when LLM response is empty or API failed
+    try:
+        fallback_out: Dict[int, Dict[str, Any]] = {}
+        df = pd.DataFrame(rows)
+        # Compute ROAS proxy
+        roas = None
+        if "predicted_roas_p50" in df.columns:
+            roas = pd.to_numeric(df["predicted_roas_p50"], errors="coerce")
+        else:
+            cost_s = pd.to_numeric(df.get("cost", 0), errors="coerce").fillna(0)
+            rev_s = pd.to_numeric(df.get("revenue", 0), errors="coerce").fillna(0)
+            roas = (rev_s / (cost_s + 1e-9)).fillna(0)
+
+        conf = pd.to_numeric(df.get("confidence_interval", 0.8), errors="coerce").fillna(0.8)
+        for i, r in df.iterrows():
+            idx = int(r.get("row_index", i))
+            r_roas = float(roas.iloc[i]) if len(roas) > i else 0.0
+            r_conf = float(conf.iloc[i]) if len(conf) > i else 0.8
+            if r_roas >= 1.5 and r_conf < 0.5:
+                act = "Scale"
+            elif r_roas >= 1.0 and r_conf < 0.8:
+                act = "Maintain"
+            elif r_roas >= 0.5:
+                act = "Reduce"
+            else:
+                act = "Cut"
+            fallback_out[idx] = {
+                "action": act,
+                "rationale": f"Heuristic: roas~{r_roas:.2f}, conf~{r_conf:.2f}",
+            }
+        return fallback_out
+    except Exception:
+        return {}
 
 
