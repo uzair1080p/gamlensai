@@ -261,17 +261,33 @@ def show_datasets_tab():
                         st.session_state['active_tab'] = "Predictions"
                         st.session_state['nav_message'] = "Dataset selected. Open the Predictions tab to continue."
                         st.rerun()
+
+                    # Row-level download button
+                    try:
+                        if st.button("Download", key=f"download_{i}"):
+                            df = load_dataset_data(datasets[i])
+                            with pd.ExcelWriter("/tmp/_gamlens_row.xlsx", engine="xlsxwriter") as writer:
+                                df.to_excel(writer, index=False, sheet_name="data")
+                            with open("/tmp/_gamlens_row.xlsx", "rb") as f:
+                                st.download_button(
+                                    label="Click to save Excel",
+                                    data=f.read(),
+                                    file_name=f"{datasets[i].canonical_name}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key=f"dl_btn_{i}"
+                                )
+                    except Exception as _e:
+                        pass
                 
                 st.markdown("---")
         else:
             st.dataframe(df_datasets, use_container_width=True)
 
-        # Download selected dataset as Excel
-        if 'selected_dataset' in st.session_state and st.session_state['selected_dataset']:
-            ds_to_download = st.session_state['selected_dataset']
+        # Download selected dataset as Excel (always rendered below list)
+        ds_to_download = st.session_state.get('selected_dataset')
+        if ds_to_download:
             try:
                 df = load_dataset_data(ds_to_download)
-                xls_bytes = None
                 with pd.ExcelWriter("/tmp/_gamlens_dataset.xlsx", engine="xlsxwriter") as writer:
                     df.to_excel(writer, index=False, sheet_name="data")
                 with open("/tmp/_gamlens_dataset.xlsx", "rb") as f:
@@ -281,6 +297,7 @@ def show_datasets_tab():
                     data=xls_bytes,
                     file_name=f"{ds_to_download.canonical_name}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_selected_dataset"
                 )
             except Exception as e:
                 st.caption(f"Could not prepare Excel download: {e}")
