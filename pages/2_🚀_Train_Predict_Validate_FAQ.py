@@ -823,6 +823,16 @@ def show_predictions_tab():
                             gpt_df[col] = base_df[col].values
                         except Exception:
                             pass
+                # Numeric coercion for currency-like strings so both display and GPT align
+                for col in ['cost', 'revenue', 'ad_revenue']:
+                    if col in gpt_df.columns:
+                        try:
+                            gpt_df[col] = pd.to_numeric(
+                                gpt_df[col].astype(str).str.replace(r"[^0-9.\-]", "", regex=True),
+                                errors='coerce'
+                            ).fillna(0.0)
+                        except Exception:
+                            pass
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
                     gpt_map = get_gpt_recommendations(gpt_df)
@@ -841,6 +851,9 @@ def show_predictions_tab():
                 if 'GPT Budget %' in gpt_display.columns:
                     cols.append('GPT Budget %')
                 st.dataframe(gpt_display[cols], use_container_width=True)
+
+                with st.expander("Show AI payload preview"):
+                    st.write(gpt_df.head(10))
 
                 # Auto-answer client FAQs using current context + GPT outputs
                 st.subheader("AI Answers to Client FAQs")
