@@ -75,7 +75,18 @@ def _build_compact_payload(pred_df: pd.DataFrame, limit: int = 200) -> List[Dict
     seen = set()
     cols = [x for x in cols if not (x in seen or seen.add(x))]
     # Prioritize top spend rows if cost exists, then append remaining head
-    source = pred_df
+    # Sanitize currency-like strings to numerics for key fields
+    df_num = pred_df.copy()
+    for col in ["cost", "revenue", "ad_revenue"]:
+        if col in df_num.columns:
+            try:
+                df_num[col] = pd.to_numeric(df_num[col]
+                                            .astype(str)
+                                            .str.replace(r"[^0-9.\-]", "", regex=True), errors="coerce").fillna(0)
+            except Exception:
+                pass
+
+    source = df_num
     if "cost" in source.columns:
         try:
             source = source.sort_values("cost", ascending=False)
@@ -146,6 +157,7 @@ def get_gpt_recommendations(
         "\n{\n  \"recommendations\": [\n    {\n      \"row_index\": int,\n      \"action\": one of [\"Scale\", \"Maintain\", \"Reduce\", \"Cut\"],\n      \"rationale\": short, <= 20 words,\n      \"budget_change_pct\": number between -100 and 200 (optional)\n    }\n  ]\n}\n"
         "Guidelines: Favor Scale when p50 >= 1.5 with narrow uncertainty; Maintain when near 1.0 and stable; "
         "Reduce when < 1.0 but promising; Cut when clearly unprofitable or highly uncertain.\n"
+        "Important: cost and revenue are NUMERIC; do NOT treat them as strings.\n"
         f"Dataset summary: {json.dumps(meta)}\n"
         f"Campaign slice (max {limit} rows, prioritized by spend): {json.dumps(rows)}"
     )
