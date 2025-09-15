@@ -265,6 +265,25 @@ def show_datasets_tab():
                 st.markdown("---")
         else:
             st.dataframe(df_datasets, use_container_width=True)
+
+        # Download selected dataset as Excel
+        if 'selected_dataset' in st.session_state and st.session_state['selected_dataset']:
+            ds_to_download = st.session_state['selected_dataset']
+            try:
+                df = load_dataset_data(ds_to_download)
+                xls_bytes = None
+                with pd.ExcelWriter("/tmp/_gamlens_dataset.xlsx", engine="xlsxwriter") as writer:
+                    df.to_excel(writer, index=False, sheet_name="data")
+                with open("/tmp/_gamlens_dataset.xlsx", "rb") as f:
+                    xls_bytes = f.read()
+                st.download_button(
+                    "📥 Download Selected Dataset (Excel)",
+                    data=xls_bytes,
+                    file_name=f"{ds_to_download.canonical_name}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            except Exception as e:
+                st.caption(f"Could not prepare Excel download: {e}")
     else:
         st.info("No datasets found. Upload some files to get started!")
 

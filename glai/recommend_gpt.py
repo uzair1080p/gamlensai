@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 import pandas as pd
 
@@ -27,7 +27,24 @@ except Exception:
     get_faq_gpt = None  # type: ignore
 
 
-def _build_compact_payload(pred_df: pd.DataFrame, limit: int = 50) -> List[Dict[str, Any]]:
+def _summarize_dataframe(pred_df: pd.DataFrame) -> Dict[str, Any]:
+    """Return light summary stats and schema info for conditioning the LLM."""
+    cols = list(pred_df.columns)
+    info = {
+        "num_rows": int(len(pred_df)),
+        "columns": cols,
+        "has_roas_cols": any(c.startswith("predicted_roas_") for c in cols),
+        "has_cost": "cost" in cols,
+        "has_revenue": "revenue" in cols,
+    }
+    if "cost" in pred_df.columns:
+        info["total_cost"] = float(pd.to_numeric(pred_df["cost"], errors="coerce").fillna(0).sum())
+    if "predicted_roas_p50" in pred_df.columns:
+        info["mean_roas_p50"] = float(pd.to_numeric(pred_df["predicted_roas_p50"], errors="coerce").mean())
+    return info
+
+
+def _build_compact_payload(pred_df: pd.DataFrame, limit: int = 200) -> List[Dict[str, Any]]:
     """Build a compact list of campaign dicts for the prompt.
 
     Only include the columns the model needs to reason about the decision to
@@ -46,11 +63,14 @@ def _build_compact_payload(pred_df: pd.DataFrame, limit: int = 50) -> List[Dict[
         ]
         if c in pred_df.columns
     ]
-    compact = (
-        pred_df[cols]
-        .head(limit)
-        .copy()
-    )
+    # Prioritize top spend rows if cost exists, then append remaining head
+    source = pred_df
+    if "cost" in source.columns:
+        try:
+            source = source.sort_values("cost", ascending=False)
+        except Exception:
+            pass
+    compact = source[cols].head(limit).copy()
     # Ensure basic types for JSON
     for c in compact.columns:
         if isinstance(compact[c].dtype, pd.api.extensions.ExtensionDtype):
@@ -93,27 +113,31 @@ def get_gpt_recommendations(
     if not rows:
         return {}
 
+    meta = _summarize_dataframe(pred_df)
+
     system = (
-        "You are a performance marketing analyst for mobile game UA. "
-        "Classify each campaign into one of: Scale, Maintain, Reduce, Cut. "
-        "Use thresholds anchored on business logic: higher predicted ROAS and "
-        "narrow confidence intervals favor Scale; borderline ROAS near 1.0 with "
-        "moderate uncertainty favors Maintain; sub-1.0 but recoverable is Reduce; "
-        "clearly unprofitable or highly uncertain is Cut. Always be concise."
+        "You are a senior growth analyst optimizing mobile game UA. "
+        "Your task is to classify campaigns into: Scale, Maintain, Reduce, Cut, "
+        "and suggest an optional budget delta. Consider: predicted ROAS (p50), "
+        "uncertainty (p90-p10 or confidence_interval), unit economics, and spend. "
+        "If ROAS columns are missing, infer from cost, revenue and any available "
+        "signals conservatively. Always be concise and actionable."
     )
 
     user = (
-        "Decide actions for the following campaigns. Return STRICT JSON with the schema: "
-        "{\n  \"recommendations\": [\n    {\n      \"row_index\": int,\n      \"action\": one of [\"Scale\", \"Maintain\", \"Reduce\", \"Cut\"],\n      \"rationale\": short string (<= 20 words),\n      \"budget_change_pct\": optional number between -100 and 200\n    }\n  ]\n}\n"
-        "Use predicted_roas_p50, p10/p90, confidence_interval, and cost when present.\n"
-        f"Campaign data: {json.dumps(rows)}"
+        "Decide actions for the campaigns below. Return STRICT JSON only, schema:"
+        "\n{\n  \"recommendations\": [\n    {\n      \"row_index\": int,\n      \"action\": one of [\"Scale\", \"Maintain\", \"Reduce\", \"Cut\"],\n      \"rationale\": short, <= 20 words,\n      \"budget_change_pct\": number between -100 and 200 (optional)\n    }\n  ]\n}\n"
+        "Guidelines: Favor Scale when p50 >= 1.5 with narrow uncertainty; Maintain when near 1.0 and stable; "
+        "Reduce when < 1.0 but promising; Cut when clearly unprofitable or highly uncertain.\n"
+        f"Dataset summary: {json.dumps(meta)}\n"
+        f"Campaign slice (max {limit} rows, prioritized by spend): {json.dumps(rows)}"
     )
 
     try:
         resp = client.responses.create(
             model=model_name,
             temperature=0.2,
-            max_output_tokens=1000,
+            max_output_tokens=1200,
             input=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
