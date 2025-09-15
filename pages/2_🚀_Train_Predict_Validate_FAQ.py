@@ -236,7 +236,7 @@ def show_datasets_tab():
         def _dataset_to_excel_bytes(dataset_id: str) -> bytes:
             df = load_dataset_data(get_dataset_by_id(dataset_id))
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
                 df.to_excel(writer, index=False, sheet_name="data")
             return output.getvalue()
 
