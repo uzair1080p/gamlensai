@@ -9,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
+import io
 import uuid
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
@@ -230,6 +231,15 @@ def show_datasets_tab():
         df_datasets = pd.DataFrame(dataset_data)
         
         # Display with selection
+        # Cached Excel exporter to keep downloads snappy
+        @st.cache_data(show_spinner=False)
+        def _dataset_to_excel_bytes(dataset_id: str) -> bytes:
+            df = load_dataset_data(get_dataset_by_id(dataset_id))
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                df.to_excel(writer, index=False, sheet_name="data")
+            return output.getvalue()
+
         if show_actions:
             # Add selection column
             selected_indices = []
@@ -262,22 +272,18 @@ def show_datasets_tab():
                         st.session_state['nav_message'] = "Dataset selected. Open the Predictions tab to continue."
                         st.rerun()
 
-                    # Row-level download button
+                    # Row-level one-click download
                     try:
-                        if st.button("Download", key=f"download_{i}"):
-                            df = load_dataset_data(datasets[i])
-                            with pd.ExcelWriter("/tmp/_gamlens_row.xlsx", engine="xlsxwriter") as writer:
-                                df.to_excel(writer, index=False, sheet_name="data")
-                            with open("/tmp/_gamlens_row.xlsx", "rb") as f:
-                                st.download_button(
-                                    label="Click to save Excel",
-                                    data=f.read(),
-                                    file_name=f"{datasets[i].canonical_name}.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    key=f"dl_btn_{i}"
-                                )
+                        xbytes = _dataset_to_excel_bytes(str(datasets[i].id))
+                        st.download_button(
+                            label="Download",
+                            data=xbytes,
+                            file_name=f"{datasets[i].canonical_name}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"dl_btn_{i}"
+                        )
                     except Exception as _e:
-                        pass
+                        st.caption("Download unavailable for this dataset.")
                 
                 st.markdown("---")
         else:
@@ -287,11 +293,7 @@ def show_datasets_tab():
         ds_to_download = st.session_state.get('selected_dataset')
         if ds_to_download:
             try:
-                df = load_dataset_data(ds_to_download)
-                with pd.ExcelWriter("/tmp/_gamlens_dataset.xlsx", engine="xlsxwriter") as writer:
-                    df.to_excel(writer, index=False, sheet_name="data")
-                with open("/tmp/_gamlens_dataset.xlsx", "rb") as f:
-                    xls_bytes = f.read()
+                xls_bytes = _dataset_to_excel_bytes(str(ds_to_download.id))
                 st.download_button(
                     "📥 Download Selected Dataset (Excel)",
                     data=xls_bytes,
