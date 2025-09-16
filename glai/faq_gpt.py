@@ -229,13 +229,26 @@ IMPORTANT: When AI recommendations are available (has_predictions=true), you can
 
 Always maintain a professional, consultative tone focused on helping game studios optimize their advertising spend."""
             
+            # Create a condensed context for GPT to avoid token limits
+            condensed_context = {
+                "has_ai_recommendations": context.get("has_predictions", False),
+                "ai_recommendations_summary": context.get("ai_recommendations", {}),
+                "model_type": context.get("model_type", "Unknown"),
+                "dataset_info": context.get("current_context", {}).get("selected_dataset", {}),
+                "system_capabilities": context.get("system_info", {}).get("capabilities", [])
+            }
+            
+            condensed_context_str = json.dumps(condensed_context, indent=2)
+            print(f"Original context length: {len(context_str)} characters")
+            print(f"Condensed context length: {len(condensed_context_str)} characters")
+            
             # Create user prompt
             user_prompt = f"""Please answer this business question about ROAS forecasting and campaign optimization:
 
 Question: {question}
 
 Context about the current GameLens AI session:
-{context_str}
+{condensed_context_str}
 
 Please provide a comprehensive, actionable answer that helps the user make informed decisions about their advertising campaigns."""
             
@@ -250,7 +263,7 @@ Please provide a comprehensive, actionable answer that helps the user make infor
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=800,
+                max_tokens=500,
                 temperature=0.3
             )
             
