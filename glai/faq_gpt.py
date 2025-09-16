@@ -21,10 +21,17 @@ class GameLensFAQGPT:
     def __init__(self):
         self.client = None
         api_key = os.getenv('OPENAI_API_KEY')
+        print(f"FAQ GPT Debug - API key found: {api_key is not None}")
         if api_key:
-            self.client = OpenAI(api_key=api_key)
+            try:
+                self.client = OpenAI(api_key=api_key)
+                print(f"FAQ GPT Debug - Client initialized successfully")
+            except Exception as e:
+                print(f"FAQ GPT Debug - Client initialization failed: {e}")
+                self.client = None
         else:
             logger.warning("OpenAI API key not found. FAQ will use fallback answers.")
+            print("FAQ GPT Debug - No API key found")
     
     def generate_context_summary(self, 
                                 selected_model: Optional[ModelVersion] = None,
@@ -162,6 +169,7 @@ class GameLensFAQGPT:
         """Generate FAQ answer using GPT or fallback"""
         
         if not use_gpt or not self.client:
+            print(f"FAQ GPT Debug - GPT not available. use_gpt={use_gpt}, client={self.client is not None}")
             fallback_answer = self._generate_fallback_answer(question, context)
             if fallback_answer is None:
                 # Fallback wants GPT to handle this, but GPT is not available
