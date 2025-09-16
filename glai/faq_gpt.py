@@ -226,16 +226,24 @@ Please provide a comprehensive, actionable answer that helps the user make infor
         # Check if we have model and dataset context
         has_model = context.get("current_context", {}).get("selected_model")
         has_dataset = context.get("current_context", {}).get("selected_dataset")
+        has_ai_recommendations = context.get("has_predictions", False) and context.get("ai_recommendations", {}).get("count", 0) > 0
         
         if "roi" in question_lower and ("100%" in question or "d15" in question_lower or "d30" in question_lower or "d90" in question_lower):
             if has_model and has_dataset:
                 return f"To determine when ROI reaches 100% on this channel, run predictions using model '{has_model['name']}' on dataset '{has_dataset['name']}' in the Predictions tab. The system will show projected ROAS over time with confidence intervals to identify when break-even is achieved."
+            elif has_ai_recommendations:
+                return "Based on the current AI recommendations, ROI analysis requires historical ROAS data over time. The current recommendations show campaign-level actions (Scale/Maintain/Reduce/Cut) but don't include time-series ROAS projections. For 100% ROI timing, you would need to train a model with historical data that includes ROAS progression over D15, D30, D90 periods."
             else:
                 return "Please select a model and dataset to get ROI projections. Go to the Model Training tab to train or select a model, then run predictions to see when 100% ROI will be achieved."
         
         elif "continue" in question_lower and ("campaign" in question_lower or "pause" in question_lower):
             if has_model and has_dataset:
                 return f"Campaign continuation recommendations are available in the Predictions tab using model '{has_model['name']}'. The system categorizes campaigns as Scale, Maintain, Reduce, or Cut based on predicted ROAS and confidence intervals."
+            elif has_ai_recommendations:
+                ai_summary = context.get("ai_recommendations", {})
+                actions = ai_summary.get("actions_breakdown", {})
+                action_text = ", ".join([f"{count} {action}" for action, count in actions.items() if count > 0])
+                return f"Based on current AI analysis: {action_text}. Review the specific recommendations above for each campaign. 'Cut' campaigns should be paused, 'Reduce' campaigns need optimization, 'Maintain' campaigns can continue as-is, and 'Scale' campaigns should receive increased budget."
             else:
                 return "Please select a model and dataset to get campaign recommendations. Use the Model Training tab to make your selections, then check the Predictions tab for specific guidance."
         

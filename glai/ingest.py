@@ -198,20 +198,8 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
         if col in df_normalized.columns:
             df_normalized[col] = pd.to_numeric(df_normalized[col], errors='coerce')
     
-    # Normalize currency columns to handle "$-", "$xx.xx", commas, etc.
-    currency_cols = ['cost', 'revenue', 'ad_revenue']
-    for col in currency_cols:
-        if col in df_normalized.columns:
-            try:
-                # Convert to string, strip currency symbols, commas, and parse to numeric
-                df_normalized[col] = df_normalized[col].astype(str).str.replace(r'[^\d.-]', '', regex=True)
-                df_normalized[col] = pd.to_numeric(df_normalized[col], errors='coerce').fillna(0.0)
-            except Exception:
-                df_normalized[col] = 0.0
-    
-    # Fallback revenue to ad_revenue if revenue is 0 or missing
-    if 'revenue' in df_normalized.columns and 'ad_revenue' in df_normalized.columns:
-        df_normalized['revenue'] = df_normalized['revenue'].where(df_normalized['revenue'] > 0, df_normalized['ad_revenue'])
+    # Keep currency columns as strings for GPT to parse - don't normalize here
+    # The GPT recommendation system will handle parsing currency strings
     
     # Fill missing values
     df_normalized = df_normalized.fillna(0)
