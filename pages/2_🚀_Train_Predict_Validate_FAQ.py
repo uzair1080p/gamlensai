@@ -845,9 +845,9 @@ def show_predictions_tab():
                         return 0.0
                 
                 if 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = gpt_display['cost'].apply(parse_currency_for_display).round(2)
+                    gpt_display['Cost'] = pd.to_numeric(gpt_display['cost'], errors='coerce').fillna(0).round(2)
                 if 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = gpt_display['revenue'].apply(parse_currency_for_display).round(2)
+                    gpt_display['Revenue'] = pd.to_numeric(gpt_display['revenue'], errors='coerce').fillna(0).round(2)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
