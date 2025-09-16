@@ -828,15 +828,26 @@ def show_predictions_tab():
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
                     gpt_map = get_gpt_recommendations(gpt_df)
-                    print(f"GPT returned {len(gpt_map)} recommendations: {gpt_map}")
                 # Display table
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
-                # Create display columns - show raw values as-is
+                # Create display columns - parse currency strings for display
+                def parse_currency_for_display(val):
+                    if pd.isna(val) or val == '' or val == '$-':
+                        return 0.0
+                    try:
+                        # Remove currency symbols and parse
+                        clean_val = str(val).replace('$', '').replace(',', '').strip()
+                        if clean_val == '' or clean_val == '-':
+                            return 0.0
+                        return float(clean_val)
+                    except:
+                        return 0.0
+                
                 if 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = gpt_display['cost'].astype(str)
+                    gpt_display['Cost'] = gpt_display['cost'].apply(parse_currency_for_display).round(2)
                 if 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                    gpt_display['Revenue'] = gpt_display['revenue'].apply(parse_currency_for_display).round(2)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
@@ -869,6 +880,9 @@ def show_predictions_tab():
                         for k in ["Scale", "Maintain", "Reduce", "Cut"]
                     }
                 }
+                # Mark that we have AI predictions available
+                context["has_predictions"] = True
+                context["model_type"] = "Adaptive AI Recommendations (GPT-powered)"
                 client_questions = [
                     "When will ROI of 100% be achieved on this channel? D15? D30? D90?",
                     "Should we continue running this campaign or pause it?",

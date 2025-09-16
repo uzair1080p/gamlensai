@@ -151,13 +151,10 @@ def get_gpt_recommendations(
         try:
             data = json.loads(text)
             recs = data.get("recommendations", [])
-            print(f"GPT returned {len(recs)} recommendations")
         except Exception as e:
             print(f"GPT response parsing failed: {e}")
             print(f"Raw response: {text}")
             recs = []
-    else:
-        print("GPT returned empty response")
 
     out: Dict[int, Dict[str, Any]] = {}
     for rec in recs:
