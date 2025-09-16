@@ -828,14 +828,15 @@ def show_predictions_tab():
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
                     gpt_map = get_gpt_recommendations(gpt_df)
+                    print(f"GPT returned {len(gpt_map)} recommendations: {gpt_map}")
                 # Display table
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
                 # Create display columns - show raw values as-is
                 if 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = gpt_display['cost']
+                    gpt_display['Cost'] = gpt_display['cost'].astype(str)
                 if 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = gpt_display['revenue']
+                    gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))

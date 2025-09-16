@@ -132,17 +132,18 @@ def get_gpt_recommendations(
     )
 
     try:
-        resp = client.responses.create(
+        resp = client.chat.completions.create(
             model=model_name,
             temperature=0.2,
-            max_output_tokens=1200,
-            input=[
+            max_tokens=1200,
+            messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         )
-        text = resp.output_text  # type: ignore[attr-defined]
-    except Exception:
+        text = resp.choices[0].message.content
+    except Exception as e:
+        print(f"GPT API error: {e}")
         text = ""
 
     recs = []
@@ -150,8 +151,13 @@ def get_gpt_recommendations(
         try:
             data = json.loads(text)
             recs = data.get("recommendations", [])
-        except Exception:
+            print(f"GPT returned {len(recs)} recommendations")
+        except Exception as e:
+            print(f"GPT response parsing failed: {e}")
+            print(f"Raw response: {text}")
             recs = []
+    else:
+        print("GPT returned empty response")
 
     out: Dict[int, Dict[str, Any]] = {}
     for rec in recs:
