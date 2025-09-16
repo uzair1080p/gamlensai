@@ -162,11 +162,18 @@ class GameLensFAQGPT:
         """Generate FAQ answer using GPT or fallback"""
         
         if not use_gpt or not self.client:
-            return self._generate_fallback_answer(question, context)
+            fallback_answer = self._generate_fallback_answer(question, context)
+            if fallback_answer is None:
+                # Fallback wants GPT to handle this, but GPT is not available
+                return "Unable to generate answer at this time. Please try again later."
+            return fallback_answer
         
         try:
             # Prepare context for GPT
             context_str = json.dumps(context, indent=2)
+            print(f"FAQ GPT Debug - Question: {question}")
+            print(f"FAQ GPT Debug - Context keys: {list(context.keys())}")
+            print(f"FAQ GPT Debug - Has AI recommendations: {context.get('has_predictions', False)}")
             
             # Create system prompt
             system_prompt = """You are an expert data scientist and business analyst for GameLens AI, a ROAS (Return on Ad Spend) forecasting platform for mobile game studios.
@@ -214,11 +221,17 @@ Please provide a comprehensive, actionable answer that helps the user make infor
                 temperature=0.3
             )
             
-            return response.choices[0].message.content.strip()
+            answer = response.choices[0].message.content.strip()
+            print(f"FAQ GPT Debug - Generated answer: {answer[:100]}...")
+            return answer
             
         except Exception as e:
             logger.error(f"GPT FAQ generation failed: {e}")
-            return self._generate_fallback_answer(question, context)
+            print(f"FAQ GPT Debug - Error: {e}")
+            fallback_answer = self._generate_fallback_answer(question, context)
+            if fallback_answer is None:
+                return "Unable to generate answer at this time. Please try again later."
+            return fallback_answer
     
     def _generate_fallback_answer(self, question: str, context: Dict[str, Any]) -> str:
         """Generate fallback answer when GPT is not available"""
