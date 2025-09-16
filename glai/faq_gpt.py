@@ -169,19 +169,29 @@ class GameLensFAQGPT:
         """Generate FAQ answer using GPT or fallback"""
         
         if not use_gpt or not self.client:
-            print(f"FAQ GPT Debug - GPT not available. use_gpt={use_gpt}, client={self.client is not None}")
+            print(f"\n=== FAQ GPT FALLBACK ===")
+            print(f"GPT not available. use_gpt={use_gpt}, client={self.client is not None}")
+            print(f"Question: {question}")
             fallback_answer = self._generate_fallback_answer(question, context)
+            print(f"Fallback answer: {fallback_answer}")
             if fallback_answer is None:
                 # Fallback wants GPT to handle this, but GPT is not available
+                print(f"Fallback returned None - GPT needed but not available")
                 return "Unable to generate answer at this time. Please try again later."
+            print(f"=== END FALLBACK ===\n")
             return fallback_answer
         
         try:
             # Prepare context for GPT
             context_str = json.dumps(context, indent=2)
-            print(f"FAQ GPT Debug - Question: {question}")
-            print(f"FAQ GPT Debug - Context keys: {list(context.keys())}")
-            print(f"FAQ GPT Debug - Has AI recommendations: {context.get('has_predictions', False)}")
+            print(f"\n=== FAQ GPT DEBUG START ===")
+            print(f"Question: {question}")
+            print(f"Context keys: {list(context.keys())}")
+            print(f"Has AI recommendations: {context.get('has_predictions', False)}")
+            print(f"AI recommendations count: {context.get('ai_recommendations', {}).get('count', 0)}")
+            print(f"Model type: {context.get('model_type', 'None')}")
+            print(f"Client available: {self.client is not None}")
+            print(f"Context JSON length: {len(context_str)} characters")
             
             # Create system prompt
             system_prompt = """You are an expert data scientist and business analyst for GameLens AI, a ROAS (Return on Ad Spend) forecasting platform for mobile game studios.
@@ -219,6 +229,10 @@ Context about the current GameLens AI session:
 Please provide a comprehensive, actionable answer that helps the user make informed decisions about their advertising campaigns."""
             
             # Call GPT
+            print(f"Making GPT API call...")
+            print(f"System prompt length: {len(system_prompt)} characters")
+            print(f"User prompt length: {len(user_prompt)} characters")
+            
             response = self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[
@@ -229,14 +243,26 @@ Please provide a comprehensive, actionable answer that helps the user make infor
                 temperature=0.3
             )
             
+            print(f"GPT API call successful!")
+            print(f"Response object: {type(response)}")
+            print(f"Number of choices: {len(response.choices)}")
+            
             answer = response.choices[0].message.content.strip()
-            print(f"FAQ GPT Debug - Generated answer: {answer[:100]}...")
+            print(f"Generated answer length: {len(answer)} characters")
+            print(f"Generated answer preview: {answer[:200]}...")
+            print(f"=== FAQ GPT DEBUG END ===\n")
             return answer
             
         except Exception as e:
             logger.error(f"GPT FAQ generation failed: {e}")
-            print(f"FAQ GPT Debug - Error: {e}")
+            print(f"\n=== FAQ GPT ERROR ===")
+            print(f"Error type: {type(e)}")
+            print(f"Error message: {str(e)}")
+            print(f"Error details: {repr(e)}")
+            print(f"=== END ERROR ===\n")
+            
             fallback_answer = self._generate_fallback_answer(question, context)
+            print(f"Fallback answer: {fallback_answer}")
             if fallback_answer is None:
                 return "Unable to generate answer at this time. Please try again later."
             return fallback_answer
