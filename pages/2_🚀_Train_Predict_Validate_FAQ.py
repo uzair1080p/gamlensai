@@ -844,10 +844,18 @@ def show_predictions_tab():
                     except:
                         return 0.0
                 
+                # Debug: Check what's in the raw data
+                st.write("Debug - Raw cost values:", gpt_display['cost'].head().tolist())
+                st.write("Debug - Raw revenue values:", gpt_display['revenue'].head().tolist())
+                
                 if 'cost' in gpt_display.columns:
                     gpt_display['Cost'] = gpt_display['cost'].apply(parse_currency_for_display).round(2)
                 if 'revenue' in gpt_display.columns:
                     gpt_display['Revenue'] = gpt_display['revenue'].apply(parse_currency_for_display).round(2)
+                
+                # Debug: Check parsed values
+                st.write("Debug - Parsed Cost values:", gpt_display['Cost'].head().tolist())
+                st.write("Debug - Parsed Revenue values:", gpt_display['Revenue'].head().tolist())
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
