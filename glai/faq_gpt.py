@@ -319,6 +319,15 @@ Please provide a comprehensive, actionable answer that helps the user make infor
             else:
                 return "Please select a model and dataset to get campaign recommendations. Use the Model Training tab to make your selections, then check the Predictions tab for specific guidance."
         
+        elif "roas" in question_lower and ("projected" in question_lower or "spending" in question_lower):
+            if has_model and has_dataset:
+                return f"Projected ROAS analysis is available in the Predictions tab using model '{has_model['name']}'. The system shows confidence intervals and projected performance over time."
+            elif has_ai_recommendations:
+                # Let GPT generate the answer based on AI recommendations
+                return None  # This will trigger GPT generation
+            else:
+                return "Please select a model and dataset to get ROAS projections. Use the Model Training tab to make your selections, then run predictions to see projected ROAS."
+        
         elif "cpi" in question_lower and ("profitability" in question_lower or "d30" in question_lower or "d90" in question_lower):
             if has_model and has_dataset:
                 return f"Target CPI for profitability can be calculated using model '{has_model['name']}' on dataset '{has_dataset['name']}'. Run predictions in the Predictions tab to see the relationship between CPI and projected ROAS, helping identify the maximum CPI for profitable campaigns."
@@ -344,7 +353,11 @@ Please provide a comprehensive, actionable answer that helps the user make infor
                 return "Please select a model and dataset to get cutting recommendations. Use the Model Training tab to make your selections, then check the Predictions tab for specific guidance."
         
         else:
-            return "I can help you with questions about model performance, campaign recommendations, ROAS predictions, and data insights. Please select a model and dataset for more specific answers, or ask a more specific question."
+            # If we have AI recommendations but no specific match, let GPT handle it
+            if has_ai_recommendations:
+                return None  # This will trigger GPT generation
+            else:
+                return "I can help you with questions about model performance, campaign recommendations, ROAS predictions, and data insights. Please select a model and dataset for more specific answers, or ask a more specific question."
 
 
 def get_faq_gpt() -> GameLensFAQGPT:
