@@ -182,8 +182,19 @@ class GameLensFAQGPT:
             return fallback_answer
         
         try:
-            # Prepare context for GPT
-            context_str = json.dumps(context, indent=2)
+            # Prepare context for GPT - convert UUIDs to strings for JSON serialization
+            def convert_uuids_to_strings(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_uuids_to_strings(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_uuids_to_strings(item) for item in obj]
+                elif hasattr(obj, '__class__') and 'UUID' in str(type(obj)):
+                    return str(obj)
+                else:
+                    return obj
+            
+            context_for_json = convert_uuids_to_strings(context)
+            context_str = json.dumps(context_for_json, indent=2)
             print(f"\n=== FAQ GPT DEBUG START ===")
             print(f"Question: {question}")
             print(f"Context keys: {list(context.keys())}")
