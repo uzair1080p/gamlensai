@@ -831,23 +831,11 @@ def show_predictions_tab():
                 # Display table
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
-                # Robust currency parsing for display: handles "$78.00", "$-", commas, blanks
-                def _parse_currency_series(series: pd.Series) -> pd.Series:
-                    cleaned = (
-                        series.astype(str)
-                        .str.replace(r"[^0-9.\-]", "", regex=True)
-                        .replace("", "0")
-                    )
-                    return pd.to_numeric(cleaned, errors="coerce").fillna(0.0)
-                
+                # Use raw string values directly from the data
                 if 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = _parse_currency_series(gpt_display['cost']).round(2)
+                    gpt_display['Cost'] = gpt_display['cost'].astype(str)
                 if 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = _parse_currency_series(gpt_display['revenue']).round(2)
-                    # If revenue is zero but ad_revenue exists, use it as a proxy
-                    if 'ad_revenue' in gpt_display.columns:
-                        ad_rev_num = _parse_currency_series(gpt_display['ad_revenue']).round(2)
-                        gpt_display['Revenue'] = gpt_display['Revenue'].where(gpt_display['Revenue'] > 0, ad_rev_num)
+                    gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
