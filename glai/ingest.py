@@ -189,14 +189,21 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
     if 'date' in df_normalized.columns:
         df_normalized['date'] = pd.to_datetime(df_normalized['date'], errors='coerce')
     
-    # Convert numeric columns
-    numeric_columns = ['installs', 'cost', 'revenue']
+    # Convert numeric columns (preserve currency strings for cost/revenue)
+    numeric_columns = ['installs']  # Only convert installs to numeric
+    currency_columns = ['cost', 'revenue']  # Keep as strings to preserve currency format
     roas_columns = [col for col in df_normalized.columns if col.startswith('roas_d')]
     retention_columns = [col for col in df_normalized.columns if col.startswith('retention_d')]
     
+    # Convert truly numeric columns
     for col in numeric_columns + roas_columns + retention_columns:
         if col in df_normalized.columns:
             df_normalized[col] = pd.to_numeric(df_normalized[col], errors='coerce')
+    
+    # Ensure currency columns are strings (preserve original format)
+    for col in currency_columns:
+        if col in df_normalized.columns:
+            df_normalized[col] = df_normalized[col].astype(str)
     
     # Keep currency columns as strings for GPT to parse - don't normalize here
     # The GPT recommendation system will handle parsing currency strings
