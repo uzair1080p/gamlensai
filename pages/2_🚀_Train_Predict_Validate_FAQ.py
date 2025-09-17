@@ -301,6 +301,12 @@ def show_datasets_tab():
                         st.session_state['renaming_dataset_id'] = str(datasets[i].id)
                         st.session_state['renaming_dataset_name'] = datasets[i].canonical_name
                         st.rerun()
+                    
+                    # Delete dataset functionality
+                    if st.button("🗑️ Delete", key=f"delete_{i}"):
+                        st.session_state['deleting_dataset_id'] = str(datasets[i].id)
+                        st.session_state['deleting_dataset_name'] = datasets[i].canonical_name
+                        st.rerun()
 
                     # Row-level one-click download
                     try:
@@ -364,6 +370,61 @@ def show_datasets_tab():
                     del st.session_state['renaming_dataset_id']
                     if 'renaming_dataset_name' in st.session_state:
                         del st.session_state['renaming_dataset_name']
+                    st.rerun()
+
+        # Delete dataset confirmation dialog
+        if 'deleting_dataset_id' in st.session_state:
+            st.subheader("🗑️ Delete Dataset")
+            dataset_name = st.session_state.get('deleting_dataset_name', 'Unknown')
+            st.warning(f"⚠️ **Are you sure you want to delete dataset '{dataset_name}'?**")
+            st.error("🚨 **This action cannot be undone!** The dataset and all associated data will be permanently removed.")
+            
+            col1, col2, col3 = st.columns([1, 1, 2])
+            with col1:
+                if st.button("✅ Yes, Delete", key="confirm_delete", type="primary"):
+                    try:
+                        # Delete dataset from database and filesystem
+                        from glai.db import get_db_session
+                        from glai.models import Dataset
+                        from pathlib import Path
+                        import os
+                        
+                        db = get_db_session()
+                        try:
+                            dataset = db.query(Dataset).filter(Dataset.id == st.session_state['deleting_dataset_id']).first()
+                            if dataset:
+                                # Delete the data file if it exists
+                                if dataset.storage_path and Path(dataset.storage_path).exists():
+                                    try:
+                                        os.remove(dataset.storage_path)
+                                        # Also try to remove the parent directory if it's empty
+                                        parent_dir = Path(dataset.storage_path).parent
+                                        if parent_dir.exists() and not any(parent_dir.iterdir()):
+                                            parent_dir.rmdir()
+                                    except Exception as e:
+                                        st.warning(f"Could not delete data file: {e}")
+                                
+                                # Delete from database
+                                db.delete(dataset)
+                                db.commit()
+                                st.success(f"✅ Dataset '{dataset_name}' deleted successfully")
+                                
+                                # Clear delete state
+                                del st.session_state['deleting_dataset_id']
+                                del st.session_state['deleting_dataset_name']
+                                st.rerun()
+                            else:
+                                st.error("Dataset not found")
+                        finally:
+                            db.close()
+                    except Exception as e:
+                        st.error(f"Error deleting dataset: {e}")
+            
+            with col2:
+                if st.button("❌ Cancel", key="cancel_delete"):
+                    del st.session_state['deleting_dataset_id']
+                    if 'deleting_dataset_name' in st.session_state:
+                        del st.session_state['deleting_dataset_name']
                     st.rerun()
 
         # Download selected dataset as Excel (always rendered below list)
