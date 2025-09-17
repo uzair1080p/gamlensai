@@ -225,6 +225,11 @@ def show_datasets_tab():
     with col3:
         # Always show actions (was toggle before)
         show_actions = True
+        
+        # Delete all datasets button
+        if st.button("🗑️ Delete All Datasets", type="secondary", help="Delete all datasets permanently"):
+            st.session_state['deleting_all_datasets'] = True
+            st.rerun()
     
     # Get datasets
     datasets = get_datasets(
@@ -427,6 +432,66 @@ def show_datasets_tab():
                     del st.session_state['deleting_dataset_id']
                     if 'deleting_dataset_name' in st.session_state:
                         del st.session_state['deleting_dataset_name']
+                    st.rerun()
+
+        # Delete all datasets confirmation dialog
+        if 'deleting_all_datasets' in st.session_state:
+            st.subheader("🗑️ Delete All Datasets")
+            dataset_count = len(datasets) if datasets else 0
+            st.error(f"🚨 **WARNING: This will permanently delete ALL {dataset_count} datasets!**")
+            st.warning("⚠️ **This action cannot be undone!** All datasets and their associated data files will be permanently removed from the system.")
+            
+            if dataset_count > 0:
+                st.write("**Datasets to be deleted:**")
+                for i, dataset in enumerate(datasets[:10]):  # Show first 10
+                    st.write(f"- {dataset.canonical_name}")
+                if len(datasets) > 10:
+                    st.write(f"... and {len(datasets) - 10} more datasets")
+            
+            col1, col2, col3 = st.columns([1, 1, 2])
+            with col1:
+                if st.button("✅ Yes, Delete All", key="confirm_delete_all", type="primary"):
+                    try:
+                        # Delete all datasets from database and filesystem
+                        from glai.db import get_db_session
+                        from glai.models import Dataset
+                        from pathlib import Path
+                        import uuid
+                        
+                        db = get_db_session()
+                        deleted_count = 0
+                        try:
+                            all_datasets = db.query(Dataset).all()
+                            for dataset in all_datasets:
+                                # Delete the data file if it exists
+                                if dataset.storage_path and Path(dataset.storage_path).exists():
+                                    try:
+                                        os.remove(dataset.storage_path)
+                                        # Also try to remove the parent directory if it's empty
+                                        parent_dir = Path(dataset.storage_path).parent
+                                        if parent_dir.exists() and not any(parent_dir.iterdir()):
+                                            parent_dir.rmdir()
+                                    except Exception as e:
+                                        st.warning(f"Could not delete data file for {dataset.canonical_name}: {e}")
+                                
+                                # Delete from database
+                                db.delete(dataset)
+                                deleted_count += 1
+                            
+                            db.commit()
+                            st.success(f"✅ Successfully deleted {deleted_count} datasets")
+                            
+                            # Clear delete state
+                            del st.session_state['deleting_all_datasets']
+                            st.rerun()
+                        finally:
+                            db.close()
+                    except Exception as e:
+                        st.error(f"Error deleting datasets: {e}")
+            
+            with col2:
+                if st.button("❌ Cancel", key="cancel_delete_all"):
+                    del st.session_state['deleting_all_datasets']
                     st.rerun()
 
         # Download selected dataset as Excel (always rendered below list)
