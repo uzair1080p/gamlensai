@@ -948,6 +948,10 @@ def show_predictions_tab():
                 st.dataframe(gpt_display[cols], use_container_width=True)
 
                 with st.expander("Show AI payload preview"):
+                    st.write("GPT DataFrame shape:", gpt_df.shape)
+                    st.write("GPT DataFrame columns:", gpt_df.columns.tolist())
+                    st.write("Cost column sample:", gpt_df['cost'].head().tolist() if 'cost' in gpt_df.columns else "No cost column")
+                    st.write("Revenue column sample:", gpt_df['revenue'].head().tolist() if 'revenue' in gpt_df.columns else "No revenue column")
                     st.write(gpt_df.head(10))
 
                 # Auto-answer client FAQs using current context + GPT outputs
