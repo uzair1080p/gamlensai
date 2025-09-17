@@ -344,7 +344,10 @@ def show_datasets_tab():
                             
                             db = get_db_session()
                             try:
-                                dataset = db.query(Dataset).filter(Dataset.id == st.session_state['renaming_dataset_id']).first()
+                                # Convert string ID to UUID
+                                import uuid
+                                dataset_id = uuid.UUID(st.session_state['renaming_dataset_id'])
+                                dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
                                 if dataset:
                                     dataset.canonical_name = new_name
                                     db.commit()
@@ -387,7 +390,10 @@ def show_datasets_tab():
                         
                         db = get_db_session()
                         try:
-                            dataset = db.query(Dataset).filter(Dataset.id == st.session_state['deleting_dataset_id']).first()
+                            # Convert string ID to UUID
+                            import uuid
+                            dataset_id = uuid.UUID(st.session_state['deleting_dataset_id'])
+                            dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
                             if dataset:
                                 # Delete the data file if it exists
                                 if dataset.storage_path and Path(dataset.storage_path).exists():
