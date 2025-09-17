@@ -189,9 +189,50 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
     if 'date' in df_normalized.columns:
         df_normalized['date'] = pd.to_datetime(df_normalized['date'], errors='coerce')
     
-    # Convert numeric columns (preserve currency strings for cost/revenue)
-    numeric_columns = ['installs']  # Only convert installs to numeric
-    currency_columns = ['cost', 'revenue']  # Keep as strings to preserve currency format
+    # Smart currency cleaning - detect and extract numeric values from currency strings
+    def clean_currency_value(value):
+        """Extract numeric value from currency string"""
+        if pd.isna(value) or value == '' or value == '-':
+            return 0.0
+        
+        # Convert to string and clean
+        str_val = str(value).strip()
+        
+        # Handle common currency indicators
+        if str_val in ['$-', '$', '€-', '€', '£-', '£', '¥-', '¥', '-', '']:
+            return 0.0
+        
+        # Remove currency symbols and clean
+        cleaned = re.sub(r'[^\d.,\-]', '', str_val)
+        
+        # Handle negative values
+        is_negative = '-' in cleaned
+        cleaned = cleaned.replace('-', '')
+        
+        # Handle comma as thousands separator
+        if ',' in cleaned and '.' in cleaned:
+            # Format: 1,234.56
+            cleaned = cleaned.replace(',', '')
+        elif ',' in cleaned and '.' not in cleaned:
+            # Could be either 1,234 or 1,234.56 (European format)
+            parts = cleaned.split(',')
+            if len(parts) == 2 and len(parts[1]) <= 2:
+                # Likely European decimal format: 1234,56
+                cleaned = cleaned.replace(',', '.')
+            else:
+                # Likely thousands separator: 1,234
+                cleaned = cleaned.replace(',', '')
+        
+        # Convert to float
+        try:
+            result = float(cleaned)
+            return -result if is_negative else result
+        except (ValueError, TypeError):
+            return 0.0
+    
+    # Convert numeric columns
+    numeric_columns = ['installs']
+    currency_columns = ['cost', 'revenue']  # Clean currency values
     roas_columns = [col for col in df_normalized.columns if col.startswith('roas_d')]
     retention_columns = [col for col in df_normalized.columns if col.startswith('retention_d')]
     
@@ -200,10 +241,10 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
         if col in df_normalized.columns:
             df_normalized[col] = pd.to_numeric(df_normalized[col], errors='coerce')
     
-    # Ensure currency columns are strings (preserve original format)
+    # Clean currency columns - extract numeric values from currency strings
     for col in currency_columns:
         if col in df_normalized.columns:
-            df_normalized[col] = df_normalized[col].astype(str)
+            df_normalized[col] = df_normalized[col].apply(clean_currency_value)
     
     # Keep currency columns as strings for GPT to parse - don't normalize here
     # The GPT recommendation system will handle parsing currency strings

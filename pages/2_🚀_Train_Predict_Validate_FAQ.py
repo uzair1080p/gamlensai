@@ -271,6 +271,12 @@ def show_datasets_tab():
                         st.session_state['active_tab'] = "Predictions"
                         st.session_state['nav_message'] = "Dataset selected. Open the Predictions tab to continue."
                         st.rerun()
+                    
+                    # Rename dataset functionality
+                    if st.button("Rename", key=f"rename_{i}"):
+                        st.session_state['renaming_dataset_id'] = str(datasets[i].id)
+                        st.session_state['renaming_dataset_name'] = datasets[i].canonical_name
+                        st.rerun()
 
                     # Row-level one-click download
                     try:
@@ -288,6 +294,53 @@ def show_datasets_tab():
                 st.markdown("---")
         else:
             st.dataframe(df_datasets, use_container_width=True)
+
+        # Rename dataset dialog
+        if 'renaming_dataset_id' in st.session_state:
+            st.subheader("📝 Rename Dataset")
+            current_name = st.session_state.get('renaming_dataset_name', '')
+            new_name = st.text_input(
+                "New Dataset Name", 
+                value=current_name,
+                key="rename_input"
+            )
+            
+            col1, col2, col3 = st.columns([1, 1, 2])
+            with col1:
+                if st.button("✅ Save", key="save_rename"):
+                    if new_name and new_name != current_name:
+                        try:
+                            # Update dataset name in database
+                            from glai.db import get_db_session
+                            from glai.models import Dataset
+                            from sqlalchemy.orm import Session
+                            
+                            db = get_db_session()
+                            try:
+                                dataset = db.query(Dataset).filter(Dataset.id == st.session_state['renaming_dataset_id']).first()
+                                if dataset:
+                                    dataset.canonical_name = new_name
+                                    db.commit()
+                                    st.success(f"✅ Dataset renamed to: {new_name}")
+                                    # Clear rename state
+                                    del st.session_state['renaming_dataset_id']
+                                    del st.session_state['renaming_dataset_name']
+                                    st.rerun()
+                                else:
+                                    st.error("Dataset not found")
+                            finally:
+                                db.close()
+                        except Exception as e:
+                            st.error(f"Error renaming dataset: {e}")
+                    else:
+                        st.warning("Please enter a different name")
+            
+            with col2:
+                if st.button("❌ Cancel", key="cancel_rename"):
+                    del st.session_state['renaming_dataset_id']
+                    if 'renaming_dataset_name' in st.session_state:
+                        del st.session_state['renaming_dataset_name']
+                    st.rerun()
 
         # Download selected dataset as Excel (always rendered below list)
         ds_to_download = st.session_state.get('selected_dataset')
