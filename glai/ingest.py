@@ -202,7 +202,7 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
         if str_val in ['$-', '$', '€-', '€', '£-', '£', '¥-', '¥', '-', '']:
             return 0.0
         
-        # Remove currency symbols and clean
+        # Remove currency symbols and clean - keep only digits, dots, commas, and minus
         cleaned = re.sub(r'[^\d.,\-]', '', str_val)
         
         # Handle negative values
