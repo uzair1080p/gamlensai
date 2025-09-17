@@ -831,11 +831,11 @@ def show_predictions_tab():
                 # Display table
                 gpt_display = gpt_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
-                # Use raw string values directly from the data
-                if 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = gpt_display['cost'].astype(str)
-                if 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                # Use raw string values directly from the data - ensure we're using the right source
+                if 'cost' in base_df.columns:
+                    gpt_display['Cost'] = base_df['cost'].astype(str)
+                if 'revenue' in base_df.columns:
+                    gpt_display['Revenue'] = base_df['revenue'].astype(str)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
