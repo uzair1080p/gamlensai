@@ -30,9 +30,6 @@ from glai.predict import run_predictions, get_prediction_runs, load_predictions,
 from glai.naming import make_canonical_name
 from glai.faq_gpt import get_faq_gpt
 from glai.recommend_gpt import get_gpt_recommendations
-import pandas as pd
-import os
-from pathlib import Path
 
 def load_raw_csv_data(dataset):
     """Load raw CSV data when normalized data has zeros"""
@@ -387,7 +384,6 @@ def show_datasets_tab():
                         from glai.db import get_db_session
                         from glai.models import Dataset
                         from pathlib import Path
-                        import os
                         
                         db = get_db_session()
                         try:
