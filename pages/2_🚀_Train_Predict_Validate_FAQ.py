@@ -30,6 +30,30 @@ from glai.predict import run_predictions, get_prediction_runs, load_predictions,
 from glai.naming import make_canonical_name
 from glai.faq_gpt import get_faq_gpt
 from glai.recommend_gpt import get_gpt_recommendations
+import pandas as pd
+import os
+from pathlib import Path
+
+def load_raw_csv_data(dataset):
+    """Load raw CSV data when normalized data has zeros"""
+    try:
+        # Try to find the original CSV file based on dataset info
+        if dataset.source_platform == "unity_ads" and dataset.channel == "android":
+            csv_path = "Campaign Data/Unity Ads/Android/Adspend and Revenue data.csv"
+        elif dataset.source_platform == "unity_ads" and dataset.channel == "ios":
+            csv_path = "Campaign Data/Unity Ads/iOS/Adspend+ Revenue .csv"
+        elif dataset.source_platform == "mistplay" and dataset.channel == "android":
+            csv_path = "Campaign Data/Mistplay/Android/Adspend & Revenue.csv"
+        else:
+            return None
+            
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            return df
+        else:
+            return None
+    except Exception:
+        return None
 
 # Page configuration
 st.set_page_config(
@@ -886,11 +910,30 @@ def show_predictions_tab():
                 gpt_display['Campaign'] = gpt_display.index + 1
                 # Add row_index for GPT mapping
                 gpt_display['row_index'] = gpt_display.index
-                # Use raw string values directly from the data
-                if 'cost' in gpt_display.columns:
-                    gpt_display['Cost'] = gpt_display['cost'].astype(str)
-                if 'revenue' in gpt_display.columns:
-                    gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                
+                # Check if cost/revenue are all zeros (old normalized data) and try to load raw CSV
+                if 'cost' in gpt_display.columns and gpt_display['cost'].sum() == 0:
+                    st.warning("⚠️ Detected old normalized data with zeros. Loading raw CSV data...")
+                    try:
+                        # Try to load raw CSV data
+                        raw_df = load_raw_csv_data(selected_dataset)
+                        if raw_df is not None and 'cost' in raw_df.columns:
+                            gpt_display['Cost'] = raw_df['cost'].astype(str)
+                            gpt_display['Revenue'] = raw_df['revenue'].astype(str) if 'revenue' in raw_df.columns else gpt_display['revenue'].astype(str)
+                            st.success("✅ Loaded raw CSV data with currency strings")
+                        else:
+                            gpt_display['Cost'] = gpt_display['cost'].astype(str)
+                            gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                    except Exception as e:
+                        st.error(f"Could not load raw data: {e}")
+                        gpt_display['Cost'] = gpt_display['cost'].astype(str)
+                        gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                else:
+                    # Use raw string values directly from the data
+                    if 'cost' in gpt_display.columns:
+                        gpt_display['Cost'] = gpt_display['cost'].astype(str)
+                    if 'revenue' in gpt_display.columns:
+                        gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
