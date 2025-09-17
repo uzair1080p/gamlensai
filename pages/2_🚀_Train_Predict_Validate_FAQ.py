@@ -400,6 +400,12 @@ def show_datasets_tab():
                             dataset_id = uuid.UUID(st.session_state['deleting_dataset_id'])
                             dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
                             if dataset:
+                                # First, delete associated prediction runs
+                                from glai.models import PredictionRun
+                                prediction_runs = db.query(PredictionRun).filter(PredictionRun.dataset_id == dataset.id).all()
+                                for pred_run in prediction_runs:
+                                    db.delete(pred_run)
+                                
                                 # Delete the data file if it exists
                                 if dataset.storage_path and Path(dataset.storage_path).exists():
                                     try:
@@ -463,6 +469,12 @@ def show_datasets_tab():
                         try:
                             all_datasets = db.query(Dataset).all()
                             for dataset in all_datasets:
+                                # First, delete associated prediction runs
+                                from glai.models import PredictionRun
+                                prediction_runs = db.query(PredictionRun).filter(PredictionRun.dataset_id == dataset.id).all()
+                                for pred_run in prediction_runs:
+                                    db.delete(pred_run)
+                                
                                 # Delete the data file if it exists
                                 if dataset.storage_path and Path(dataset.storage_path).exists():
                                     try:
