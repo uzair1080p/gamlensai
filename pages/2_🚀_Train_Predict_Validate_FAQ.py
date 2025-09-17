@@ -1069,19 +1069,25 @@ def show_predictions_tab():
                         gpt_display['Cost'] = gpt_display['cost'].astype(str)
                         gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
                 else:
-                    # Use raw string values directly from the data
+                    # As requested, do not show 'Cost' and 'Revenue' columns for now
+                    columns_to_drop = []
                     if 'cost' in gpt_display.columns:
-                        gpt_display['Cost'] = gpt_display['cost'].astype(str)
+                        columns_to_drop.append('cost')
                     if 'revenue' in gpt_display.columns:
-                        gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                        columns_to_drop.append('revenue')
+                    # Also check for 'Cost' and 'Revenue' if they were created by other logic
+                    if 'Cost' in gpt_display.columns:
+                        columns_to_drop.append('Cost')
+                    if 'Revenue' in gpt_display.columns:
+                        columns_to_drop.append('Revenue')
+                    
+                    if columns_to_drop:
+                        gpt_display = gpt_display.drop(columns=list(set(columns_to_drop)), errors='ignore')
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
                 cols = ['Campaign']
-                if 'Cost' in gpt_display.columns:
-                    cols.append('Cost')
-                if 'Revenue' in gpt_display.columns:
-                    cols.append('Revenue')
+                # Cost and Revenue columns are temporarily hidden
                 cols += ['GPT Action', 'GPT Rationale']
                 if 'GPT Budget %' in gpt_display.columns:
                     cols.append('GPT Budget %')
