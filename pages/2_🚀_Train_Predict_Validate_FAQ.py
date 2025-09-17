@@ -828,14 +828,16 @@ def show_predictions_tab():
                 # Call GPT recommender
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
                     gpt_map = get_gpt_recommendations(gpt_df)
-                # Display table
-                gpt_display = gpt_df.copy()
+                # Display table - create from base_df to ensure data integrity
+                gpt_display = base_df.copy()
                 gpt_display['Campaign'] = gpt_display.index + 1
-                # Use raw string values directly from the data - ensure we're using the right source
-                if 'cost' in base_df.columns:
-                    gpt_display['Cost'] = base_df['cost'].astype(str)
-                if 'revenue' in base_df.columns:
-                    gpt_display['Revenue'] = base_df['revenue'].astype(str)
+                # Add row_index for GPT mapping
+                gpt_display['row_index'] = gpt_display.index
+                # Use raw string values directly from the data
+                if 'cost' in gpt_display.columns:
+                    gpt_display['Cost'] = gpt_display['cost'].astype(str)
+                if 'revenue' in gpt_display.columns:
+                    gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
                 gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
