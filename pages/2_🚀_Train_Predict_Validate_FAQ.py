@@ -1090,9 +1090,7 @@ def show_predictions_tab():
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
                 cols = ['Campaign']
-                # Cost and Revenue columns are temporarily hidden(gamlens_env) root@ubuntu-s-2vcpu-4gb-syd1-01:~/gamlensai# git log -1 --oneline
-b736e2c (HEAD -> main) feat(ingestion): add smart currency cleaning and dataset renaming functionality
-(gamlens_env) root@ubuntu-s-2vcpu-4gb-syd1-01:~/gamlensai# 
+                # Cost and Revenue columns are temporarily hidden
                 cols += ['GPT Action', 'GPT Rationale']
                 if 'GPT Budget %' in gpt_display.columns:
                     cols.append('GPT Budget %')
