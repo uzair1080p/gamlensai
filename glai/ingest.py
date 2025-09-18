@@ -54,25 +54,54 @@ def detect_platform_and_hierarchy(df: pd.DataFrame, filename: str) -> Dict[str, 
         result['channel'] = 'web'
     
     # Try to extract from data columns
+    def _classify_platform(val: str) -> Optional[PlatformEnum]:
+        v = str(val).strip().lower()
+        if 'unity' in v:
+            return PlatformEnum.UNITY_ADS
+        if 'mistplay' in v:
+            return PlatformEnum.MISTPLAY
+        if 'facebook' in v or 'meta' in v:
+            return PlatformEnum.FACEBOOK
+        if 'google' in v:
+            return PlatformEnum.GOOGLE
+        if 'tiktok' in v:
+            return PlatformEnum.TIKTOK
+        return None
+
+    def _classify_channel(val: str) -> Optional[str]:
+        v = str(val).strip().lower()
+        if v in {'android', 'ios', 'web', 'desktop'}:
+            return v
+        return None
+
+    platform_col_val = None
+    channel_col_val = None
     if 'platform' in df.columns:
-        platforms = df['platform'].dropna().unique()
-        if len(platforms) > 0:
-            platform_str = str(platforms[0]).lower()
-            if 'unity' in platform_str:
-                result['platform'] = PlatformEnum.UNITY_ADS
-            elif 'mistplay' in platform_str:
-                result['platform'] = PlatformEnum.MISTPLAY
-            elif 'facebook' in platform_str:
-                result['platform'] = PlatformEnum.FACEBOOK
-            elif 'google' in platform_str:
-                result['platform'] = PlatformEnum.GOOGLE
-            elif 'tiktok' in platform_str:
-                result['platform'] = PlatformEnum.TIKTOK
-    
+        vals = df['platform'].dropna().unique()
+        if len(vals) > 0:
+            platform_col_val = str(vals[0])
     if 'channel' in df.columns:
-        channels = df['channel'].dropna().unique()
-        if len(channels) > 0:
-            result['channel'] = str(channels[0]).lower()
+        vals = df['channel'].dropna().unique()
+        if len(vals) > 0:
+            channel_col_val = str(vals[0])
+
+    # Determine if columns are inverted; correct accordingly
+    detected_platform_from_platform = _classify_platform(platform_col_val) if platform_col_val is not None else None
+    detected_channel_from_platform = _classify_channel(platform_col_val) if platform_col_val is not None else None
+    detected_platform_from_channel = _classify_platform(channel_col_val) if channel_col_val is not None else None
+    detected_channel_from_channel = _classify_channel(channel_col_val) if channel_col_val is not None else None
+
+    # Case 1: platform column actually contains channel like Android/iOS
+    # and channel column contains platform like Unity/Mistplay
+    if detected_channel_from_platform and detected_platform_from_channel:
+        result['channel'] = detected_channel_from_platform
+        result['platform'] = detected_platform_from_channel
+    else:
+        # Use normal classification if available
+        if detected_platform_from_platform:
+            result['platform'] = detected_platform_from_platform
+        if detected_channel_from_channel:
+            result['channel'] = detected_channel_from_channel
     
     # Extract game name
     game_columns = ['game', 'title', 'app', 'app_name']
