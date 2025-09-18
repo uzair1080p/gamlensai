@@ -138,7 +138,10 @@ def show_datasets_tab():
     
     # Template download + guide (restored)
     st.subheader("📋 Data Template")
-    tpl_csv = "Data_Template_GameLens_AI.csv"
+    # Prefer v2 template if present (cleaned rows/line-endings); fallback to v1
+    tpl_csv_v2 = "Data_Template_GameLens_AI_v2.csv"
+    tpl_csv_v1 = "Data_Template_GameLens_AI.csv"
+    tpl_csv = tpl_csv_v2 if os.path.exists(tpl_csv_v2) else tpl_csv_v1
     tpl_md = "DATA_TEMPLATE_GUIDE.md"
     col_tpl1, col_tpl2, col_tpl3 = st.columns([1,1,2])
     with col_tpl1:
@@ -147,7 +150,7 @@ def show_datasets_tab():
                 st.download_button(
                     label="📥 Download Template CSV",
                     data=f.read(),
-                    file_name="Data_Template_GameLens_AI.csv",
+                    file_name=os.path.basename(tpl_csv),
                     mime="text/csv"
                 )
         else:
@@ -1087,7 +1090,9 @@ def show_predictions_tab():
                 gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
                 gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
                 cols = ['Campaign']
-                # Cost and Revenue columns are temporarily hidden
+                # Cost and Revenue columns are temporarily hidden(gamlens_env) root@ubuntu-s-2vcpu-4gb-syd1-01:~/gamlensai# git log -1 --oneline
+b736e2c (HEAD -> main) feat(ingestion): add smart currency cleaning and dataset renaming functionality
+(gamlens_env) root@ubuntu-s-2vcpu-4gb-syd1-01:~/gamlensai# 
                 cols += ['GPT Action', 'GPT Rationale']
                 if 'GPT Budget %' in gpt_display.columns:
                     cols.append('GPT Budget %')
