@@ -1165,31 +1165,116 @@ def show_predictions_tab():
                     
                     if columns_to_drop:
                         gpt_display = gpt_display.drop(columns=list(set(columns_to_drop)), errors='ignore')
-                # Build client-facing summary table for GPT-only path
-                summary_df = gpt_display.copy()
-                # CPI and Installs
-                summary_df['Installs'] = gpt_display['installs'] if 'installs' in gpt_display.columns else 0
-                if 'cost' in gpt_display.columns and 'installs' in gpt_display.columns:
-                    with pd.option_context('mode.use_inf_as_na', True):
-                        summary_df['CPI ($)'] = (gpt_display.get('cost', 0) / gpt_display.get('installs', 1)).replace([pd.NA, pd.NaT], 0).fillna(0).round(2)
-                else:
+                # Build client-facing summary table for GPT-only path using raw CSV data
+                try:
+                    # Try to get raw CSV data for summary table
+                    raw_df = load_raw_csv_data(selected_dataset)
+                    if raw_df is not None and not raw_df.empty:
+                        # Use raw CSV data for summary table
+                        summary_df = pd.DataFrame({'Campaign': range(1, len(raw_df) + 1)})
+                        summary_df['row_index'] = range(len(raw_df))
+                        
+                        # Parse cost and revenue from raw strings
+                        cost_values = []
+                        revenue_values = []
+                        for i, row in raw_df.iterrows():
+                            # Parse cost
+                            cost_str = str(row.get("cost", "0")).replace("$", "").replace(",", "").strip()
+                            try:
+                                cost_val = float(cost_str) if cost_str and cost_str != "0" and cost_str != "-" else 0
+                            except (ValueError, TypeError):
+                                cost_val = 0
+                            cost_values.append(cost_val)
+                            
+                            # Parse revenue
+                            revenue_str = str(row.get("revenue", "0")).replace("$", "").replace(",", "").strip()
+                            try:
+                                revenue_val = float(revenue_str) if revenue_str and revenue_str != "0" and revenue_str != "-" else 0
+                            except (ValueError, TypeError):
+                                revenue_val = 0
+                            revenue_values.append(revenue_val)
+                        
+                        # Calculate metrics from raw data
+                        installs = raw_df.get("installs", 0).fillna(0)
+                        summary_df['Installs'] = installs
+                        summary_df['CPI ($)'] = [cost_val / install_val if install_val > 0 else 0 for cost_val, install_val in zip(cost_values, installs)]
+                        
+                        # ROAS calculations
+                        roas_d7_values = []
+                        roas_d14_values = []
+                        for i, row in raw_df.iterrows():
+                            # Check if ROAS columns exist in raw data
+                            roas_d7 = row.get("roas_d7", None)
+                            roas_d14 = row.get("roas_d14", None)
+                            
+                            if pd.notna(roas_d7) and roas_d7 != 0:
+                                roas_d7_values.append(roas_d7 * 100)
+                            elif cost_values[i] > 0:
+                                roas_d7_values.append((revenue_values[i] / cost_values[i]) * 100)
+                            else:
+                                roas_d7_values.append(0)
+                                
+                            if pd.notna(roas_d14) and roas_d14 != 0:
+                                roas_d14_values.append(roas_d14 * 100)
+                            elif cost_values[i] > 0:
+                                roas_d14_values.append((revenue_values[i] / cost_values[i]) * 100)
+                            else:
+                                roas_d14_values.append(0)
+                        
+                        summary_df['ROAS D7 (%)'] = roas_d7_values
+                        summary_df['ROAS D14 (%)'] = roas_d14_values
+                        
+                        # Retention D7
+                        if 'retention_d7' in raw_df.columns:
+                            summary_df['Retention D7 (%)'] = (raw_df['retention_d7'] * 100).round(1)
+                        elif 'retention_d7_rate' in raw_df.columns:
+                            summary_df['Retention D7 (%)'] = (raw_df['retention_d7_rate'] * 100).round(1)
+                        else:
+                            summary_df['Retention D7 (%)'] = None
+                        
+                        # ROI 100% By (Day) not available without local model
+                        summary_df['ROI 100% By (Day)'] = None
+                        
+                        # ARPU needed for break-even approximated as CPI
+                        summary_df['ARPU Needed for Break-even ($)'] = summary_df['CPI ($)']
+                        
+                        # Map GPT actions
+                        summary_df['Recommended Action'] = summary_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
+                        
+                        st.success("✅ Using raw CSV data for summary table")
+                    else:
+                        # Fallback to normalized data
+                        summary_df = gpt_display.copy()
+                        summary_df['Installs'] = gpt_display['installs'] if 'installs' in gpt_display.columns else 0
+                        if 'cost' in gpt_display.columns and 'installs' in gpt_display.columns:
+                            with pd.option_context('mode.use_inf_as_na', True):
+                                summary_df['CPI ($)'] = (gpt_display.get('cost', 0) / gpt_display.get('installs', 1)).replace([pd.NA, pd.NaT], 0).fillna(0).round(2)
+                        else:
+                            summary_df['CPI ($)'] = 0.0
+                        summary_df['ROAS D7 (%)'] = (gpt_display['roas_d7']*100).round(1) if 'roas_d7' in gpt_display.columns else None
+                        summary_df['ROAS D14 (%)'] = (gpt_display['roas_d14']*100).round(1) if 'roas_d14' in gpt_display.columns else None
+                        summary_df['ROI 100% By (Day)'] = None
+                        if 'retention_d7' in gpt_display.columns:
+                            summary_df['Retention D7 (%)'] = (gpt_display['retention_d7']*100).round(1)
+                        elif 'retention_d7_rate' in gpt_display.columns:
+                            summary_df['Retention D7 (%)'] = (gpt_display['retention_d7_rate']*100).round(1)
+                        else:
+                            summary_df['Retention D7 (%)'] = None
+                        summary_df['ARPU Needed for Break-even ($)'] = summary_df['CPI ($)']
+                        summary_df['Recommended Action'] = summary_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
+                        st.warning("⚠️ Using normalized data for summary table")
+                except Exception as e:
+                    st.error(f"Error building summary table: {e}")
+                    # Fallback to basic structure
+                    summary_df = pd.DataFrame({'Campaign': range(1, len(gpt_display) + 1)})
                     summary_df['CPI ($)'] = 0.0
-                # ROAS D7/D14 from dataset if present
-                summary_df['ROAS D7 (%)'] = (gpt_display['roas_d7']*100).round(1) if 'roas_d7' in gpt_display.columns else None
-                summary_df['ROAS D14 (%)'] = (gpt_display['roas_d14']*100).round(1) if 'roas_d14' in gpt_display.columns else None
-                # ROI 100% By (Day) not available without local model
-                summary_df['ROI 100% By (Day)'] = None
-                # Retention D7
-                if 'retention_d7' in gpt_display.columns:
-                    summary_df['Retention D7 (%)'] = (gpt_display['retention_d7']*100).round(1)
-                elif 'retention_d7_rate' in gpt_display.columns:
-                    summary_df['Retention D7 (%)'] = (gpt_display['retention_d7_rate']*100).round(1)
-                else:
+                    summary_df['Installs'] = 0
+                    summary_df['ROAS D7 (%)'] = None
+                    summary_df['ROAS D14 (%)'] = None
+                    summary_df['ROI 100% By (Day)'] = None
                     summary_df['Retention D7 (%)'] = None
-                # ARPU needed for break-even approximated as CPI
-                summary_df['ARPU Needed for Break-even ($)'] = summary_df['CPI ($)']
-                # Map GPT actions
-                summary_df['Recommended Action'] = summary_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
+                    summary_df['ARPU Needed for Break-even ($)'] = 0.0
+                    summary_df['Recommended Action'] = None
                 client_columns = ['Campaign','CPI ($)','Installs','ROAS D7 (%)','ROAS D14 (%)','ROI 100% By (Day)','Retention D7 (%)','ARPU Needed for Break-even ($)','Recommended Action']
                 st.dataframe(summary_df[client_columns], use_container_width=True)
                 # Build compact dataset for FAQ prompt using raw CSV data
