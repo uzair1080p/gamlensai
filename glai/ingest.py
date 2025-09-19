@@ -8,7 +8,7 @@ import hashlib
 import pandas as pd
 import numpy as np
 from datetime import datetime, date
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Set
 from pathlib import Path
 import re
 
@@ -139,76 +139,102 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
         Normalized dataframe
     """
     df_normalized = df.copy()
-    
-    # Column mapping for different platforms - includes whitespace variants
+
+    def _sanitize_column_name(col: Any) -> str:
+        """Create a stable, case-insensitive column token."""
+        sanitized = re.sub(r"[^0-9a-zA-Z_]+", "_", str(col).strip())
+        sanitized = re.sub(r"_+", "_", sanitized).strip("_")
+        return sanitized.lower()
+
+    # Sanitize all column headers up front so UNKNOWN platforms still align
+    original_columns = list(df_normalized.columns)
+    sanitized_mapping = {}
+    used_names = set()
+    for idx, col in enumerate(original_columns):
+        candidate = _sanitize_column_name(col)
+        if not candidate:
+            candidate = f"unnamed_{idx}"
+        base_candidate = candidate
+        suffix = 2
+        while candidate in used_names:
+            candidate = f"{base_candidate}_{suffix}"
+            suffix += 1
+        sanitized_mapping[col] = candidate
+        used_names.add(candidate)
+
+    if sanitized_mapping:
+        df_normalized = df_normalized.rename(columns=sanitized_mapping)
+
+    # Column mapping for different platforms - convert all options using the same sanitizer
     column_mappings = {
         PlatformEnum.UNITY_ADS: {
-            'date': ['date', 'Date', 'DATE', ' date ', ' Date ', ' DATE '],
-            'installs': ['installs', 'Installs', 'INSTALLS', 'installs_count', ' installs ', ' Installs ', ' INSTALLS '],
-            'cost': ['cost', 'Cost', 'COST', 'spend', 'Spend', 'SPEND', 'adspend', 'AdSpend', 'ADSPEND', ' cost ', ' Cost ', ' COST ', ' spend ', ' Spend ', ' SPEND '],
-            'revenue': ['revenue', 'Revenue', 'REVENUE', 'ad_revenue', ' revenue ', ' Revenue ', ' REVENUE ', ' ad_revenue '],
-            'roas_d0': ['roas_d0', 'ROAS_D0', 'roas_0', 'ROAS_0', ' roas_d0 ', ' ROAS_D0 ', ' roas_0 ', ' ROAS_0 '],
-            'roas_d1': ['roas_d1', 'ROAS_D1', 'roas_1', 'ROAS_1', ' roas_d1 ', ' ROAS_D1 ', ' roas_1 ', ' ROAS_1 '],
-            'roas_d3': ['roas_d3', 'ROAS_D3', 'roas_3', 'ROAS_3', ' roas_d3 ', ' ROAS_D3 ', ' roas_3 ', ' ROAS_3 '],
-            'roas_d7': ['roas_d7', 'ROAS_D7', 'roas_7', 'ROAS_7', ' roas_d7 ', ' ROAS_D7 ', ' roas_7 ', ' ROAS_7 '],
-            'roas_d14': ['roas_d14', 'ROAS_D14', 'roas_14', 'ROAS_14', ' roas_d14 ', ' ROAS_D14 ', ' roas_14 ', ' ROAS_14 '],
-            'roas_d30': ['roas_d30', 'ROAS_D30', 'roas_30', 'ROAS_30', ' roas_d30 ', ' ROAS_D30 ', ' roas_30 ', ' ROAS_30 '],
-            'roas_d60': ['roas_d60', 'ROAS_D60', 'roas_60', 'ROAS_60', ' roas_d60 ', ' ROAS_D60 ', ' roas_60 ', ' ROAS_60 '],
-            'roas_d90': ['roas_d90', 'ROAS_D90', 'roas_90', 'ROAS_90', ' roas_d90 ', ' ROAS_D90 ', ' roas_90 ', ' ROAS_90 '],
-            'retention_d1': ['retention_d1', 'RETENTION_D1', 'retention_1', 'RETENTION_1', ' retention_d1 ', ' RETENTION_D1 ', ' retention_1 ', ' RETENTION_1 '],
-            'retention_d3': ['retention_d3', 'RETENTION_D3', 'retention_3', 'RETENTION_3', ' retention_d3 ', ' RETENTION_D3 ', ' retention_3 ', ' RETENTION_3 '],
-            'retention_d7': ['retention_d7', 'RETENTION_D7', 'retention_7', 'RETENTION_7', ' retention_d7 ', ' RETENTION_D7 ', ' retention_7 ', ' RETENTION_7 '],
-            'retention_d30': ['retention_d30', 'RETENTION_D30', 'retention_30', 'RETENTION_30', ' retention_d30 ', ' RETENTION_D30 ', ' retention_30 ', ' RETENTION_30 '],
+            'date': ['date', 'report_date', 'day'],
+            'installs': ['installs', 'install_count', 'installs_count'],
+            'cost': ['cost', 'spend', 'adspend', 'ad_spend', 'media_spend'],
+            'revenue': ['revenue', 'ad_revenue', 'total_revenue'],
         },
         PlatformEnum.MISTPLAY: {
-            'date': ['date', 'Date', 'DATE', ' date ', ' Date ', ' DATE '],
-            'installs': ['installs', 'Installs', 'INSTALLS', 'installs_count', ' installs ', ' Installs ', ' INSTALLS '],
-            'cost': ['cost', 'Cost', 'COST', 'spend', 'Spend', 'SPEND', 'adspend', 'AdSpend', 'ADSPEND', ' cost ', ' Cost ', ' COST ', ' spend ', ' Spend ', ' SPEND '],
-            'revenue': ['revenue', 'Revenue', 'REVENUE', 'ad_revenue', ' revenue ', ' Revenue ', ' REVENUE ', ' ad_revenue '],
-            'roas_d0': ['roas_d0', 'ROAS_D0', 'roas_0', 'ROAS_0', ' roas_d0 ', ' ROAS_D0 ', ' roas_0 ', ' ROAS_0 '],
-            'roas_d1': ['roas_d1', 'ROAS_D1', 'roas_1', 'ROAS_1', ' roas_d1 ', ' ROAS_D1 ', ' roas_1 ', ' ROAS_1 '],
-            'roas_d3': ['roas_d3', 'ROAS_D3', 'roas_3', 'ROAS_3', ' roas_d3 ', ' ROAS_D3 ', ' roas_3 ', ' ROAS_3 '],
-            'roas_d7': ['roas_d7', 'ROAS_D7', 'roas_7', 'ROAS_7', ' roas_d7 ', ' ROAS_D7 ', ' roas_7 ', ' ROAS_7 '],
-            'roas_d14': ['roas_d14', 'ROAS_D14', 'roas_14', 'ROAS_14', ' roas_d14 ', ' ROAS_D14 ', ' roas_14 ', ' ROAS_14 '],
-            'roas_d30': ['roas_d30', 'ROAS_D30', 'roas_30', 'ROAS_30', ' roas_d30 ', ' ROAS_D30 ', ' roas_30 ', ' ROAS_30 '],
-            'roas_d60': ['roas_d60', 'ROAS_D60', 'roas_60', 'ROAS_60', ' roas_d60 ', ' ROAS_D60 ', ' roas_60 ', ' ROAS_60 '],
-            'roas_d90': ['roas_d90', 'ROAS_D90', 'roas_90', 'ROAS_90', ' roas_d90 ', ' ROAS_D90 ', ' roas_90 ', ' ROAS_90 '],
-        }
+            'date': ['date', 'report_date', 'day'],
+            'installs': ['installs', 'install_count', 'installs_count'],
+            'cost': ['cost', 'spend', 'adspend', 'ad_spend', 'media_spend'],
+            'revenue': ['revenue', 'ad_revenue', 'total_revenue'],
+        },
+        PlatformEnum.UNKNOWN: {
+            'date': ['date', 'report_date', 'day'],
+            'installs': ['installs', 'install_count', 'installs_count'],
+            'cost': ['cost', 'spend', 'adspend', 'ad_spend', 'media_spend'],
+            'revenue': ['revenue', 'ad_revenue', 'total_revenue'],
+        },
+        PlatformEnum.FACEBOOK: {
+            'date': ['date', 'report_date', 'day'],
+            'installs': ['installs', 'install_count', 'installs_count'],
+            'cost': ['cost', 'spend', 'adspend', 'ad_spend', 'media_spend'],
+            'revenue': ['revenue', 'ad_revenue', 'total_revenue'],
+        },
+        PlatformEnum.GOOGLE: {
+            'date': ['date', 'report_date', 'day'],
+            'installs': ['installs', 'install_count', 'installs_count'],
+            'cost': ['cost', 'spend', 'adspend', 'ad_spend', 'media_spend'],
+            'revenue': ['revenue', 'ad_revenue', 'total_revenue'],
+        },
+        PlatformEnum.TIKTOK: {
+            'date': ['date', 'report_date', 'day'],
+            'installs': ['installs', 'install_count', 'installs_count'],
+            'cost': ['cost', 'spend', 'adspend', 'ad_spend', 'media_spend'],
+            'revenue': ['revenue', 'ad_revenue', 'total_revenue'],
+        },
     }
-    
-    # Apply column mapping
-    mapping = column_mappings.get(platform, {})
-    for target_col, possible_cols in mapping.items():
-        for col in possible_cols:
-            if col in df_normalized.columns:
-                df_normalized = df_normalized.rename(columns={col: target_col})
+
+    generic_synonyms = {
+        'date': {'date', 'reporting_date', 'report_date', 'day'},
+        'installs': {'installs', 'install', 'installs_count', 'total_installs', 'downloads'},
+        'cost': {'cost', 'spend', 'adspend', 'ad_spend', 'media_spend', 'total_spend'},
+        'revenue': {'revenue', 'ad_revenue', 'total_revenue', 'net_revenue', 'gross_revenue', 'adrev'},
+    }
+
+    def _build_sanitized_mapping(platform_mapping: Dict[str, List[str]]) -> Dict[str, Set[str]]:
+        sanitized: Dict[str, Set[str]] = {}
+        for target_col, options in platform_mapping.items():
+            sanitized[target_col] = {_sanitize_column_name(target_col)}
+            sanitized[target_col].update(_sanitize_column_name(opt) for opt in options)
+        return sanitized
+
+    mapping_sets = _build_sanitized_mapping(column_mappings.get(platform, {}))
+    for target, options in generic_synonyms.items():
+        mapping_sets.setdefault(target, set()).update(_sanitize_column_name(opt) for opt in options)
+
+    rename_candidates: Dict[str, str] = {}
+    for col in list(df_normalized.columns):
+        for target, synonyms in mapping_sets.items():
+            if col == target:
+                continue
+            if col in synonyms and (target not in df_normalized.columns or target == col):
+                rename_candidates[col] = target
                 break
-    
-    # CRITICAL FIX: Handle whitespace variants for ALL platforms (not just known ones)
-    # This prevents cost/revenue data loss when platform detection fails
-    whitespace_fixes = {
-        ' cost ': 'cost',
-        ' revenue ': 'revenue', 
-        ' Cost ': 'cost',
-        ' Revenue ': 'revenue',
-        ' COST ': 'cost',
-        ' REVENUE ': 'revenue',
-        ' cost': 'cost',
-        ' revenue': 'revenue',
-        'cost ': 'cost',
-        'revenue ': 'revenue',
-        ' installs ': 'installs',
-        ' Installs ': 'installs',
-        ' INSTALLS ': 'installs',
-        ' date ': 'date',
-        ' Date ': 'date',
-        ' DATE ': 'date'
-    }
-    
-    for old_col, new_col in whitespace_fixes.items():
-        if old_col in df_normalized.columns and new_col not in df_normalized.columns:
-            df_normalized = df_normalized.rename(columns={old_col: new_col})
-    
+
+    if rename_candidates:
+        df_normalized = df_normalized.rename(columns=rename_candidates)
+
     # Generic normalization for ROAS/Retention regardless of platform (case-insensitive)
     import re as _re
     rename_map: dict = {}
@@ -222,7 +248,7 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
             rename_map[col] = f"roas_d{day}"
             continue
         # RETENTION_Dxx -> retention_dxx
-        m2 = _re.match(r"^retention[_\s]*d\s*(\d+)$", lc, flags=_re.IGNORECASE)
+        m2 = _re.match(r"^retention(?:_rate)?[_\s]*d\s*(\d+)$", lc, flags=_re.IGNORECASE)
         if m2:
             day = m2.group(1)
             rename_map[col] = f"retention_d{day}"
