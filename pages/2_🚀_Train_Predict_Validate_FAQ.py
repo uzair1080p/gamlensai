@@ -35,30 +35,43 @@ def load_raw_csv_data(dataset):
     """Load raw CSV data when normalized data has zeros"""
     try:
         # Try to find the original CSV file based on dataset info
+        csv_path = None
+        
+        # First try specific paths based on platform/channel
         if dataset.source_platform == "unity_ads" and dataset.channel == "android":
             csv_path = "Campaign Data/Unity Ads/Android/Adspend and Revenue data.csv"
         elif dataset.source_platform == "unity_ads" and dataset.channel == "ios":
             csv_path = "Campaign Data/Unity Ads/iOS/Adspend+ Revenue .csv"
         elif dataset.source_platform == "mistplay" and dataset.channel == "android":
             csv_path = "Campaign Data/Mistplay/Android/Adspend & Revenue.csv"
-        else:
-            # For other datasets, try to find any CSV file in the data directory
+        
+        # If specific path doesn't exist, try to find any CSV file
+        if not csv_path or not os.path.exists(csv_path):
             import glob
-            csv_files = glob.glob("data/raw/*.csv") + glob.glob("*.csv")
+            # Look for CSV files in various locations
+            csv_files = (
+                glob.glob("Campaign Data/**/*.csv", recursive=True) +
+                glob.glob("data/raw/*.csv") +
+                glob.glob("*.csv")
+            )
+            # Filter out template files and artifacts
+            csv_files = [f for f in csv_files if not any(x in f.lower() for x in ['template', 'feature_importance', 'gamlens_env'])]
+            
             if csv_files:
                 # Use the first CSV file found
                 csv_path = csv_files[0]
             else:
                 return None
-            
-        if os.path.exists(csv_path):
+        
+        if csv_path and os.path.exists(csv_path):
             df = pd.read_csv(csv_path)
             # Normalize column names (strip spaces, lowercase)
             df.columns = [col.strip().lower() for col in df.columns]
             return df
         else:
             return None
-    except Exception:
+    except Exception as e:
+        print(f"Error loading raw CSV data: {e}")
         return None
 
 # Page configuration
@@ -1170,6 +1183,13 @@ def show_predictions_tab():
                     # Try to get raw CSV data for summary table
                     raw_df = load_raw_csv_data(selected_dataset)
                     if raw_df is not None and not raw_df.empty:
+                        # Debug: Show which CSV file was loaded
+                        st.info(f"📄 Loaded raw CSV data: {raw_df.shape[0]} rows, {raw_df.shape[1]} columns")
+                        st.info(f"📄 CSV columns: {list(raw_df.columns)}")
+                        if 'cost' in raw_df.columns:
+                            st.info(f"📄 Cost sample: {raw_df['cost'].head().tolist()}")
+                        if 'revenue' in raw_df.columns:
+                            st.info(f"📄 Revenue sample: {raw_df['revenue'].head().tolist()}")
                         # Use raw CSV data for summary table
                         summary_df = pd.DataFrame({'Campaign': range(1, len(raw_df) + 1)})
                         summary_df['row_index'] = range(len(raw_df))
