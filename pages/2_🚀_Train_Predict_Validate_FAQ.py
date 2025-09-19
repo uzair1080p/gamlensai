@@ -32,46 +32,65 @@ from glai.faq_gpt import get_faq_gpt
 from glai.recommend_gpt import get_gpt_recommendations
 
 def load_raw_csv_data(dataset):
-    """Load raw CSV data when normalized data has zeros"""
+    """Load raw CSV/Excel data when normalized data has zeros"""
     try:
-        # Try to find the original CSV file based on dataset info
-        csv_path = None
+        # Try to find the original file based on dataset info
+        file_paths = []
         
-        # First try specific paths based on platform/channel
+        # First try specific paths based on platform/channel (both CSV and Excel)
         if dataset.source_platform == "unity_ads" and dataset.channel == "android":
-            csv_path = "Campaign Data/Unity Ads/Android/Adspend and Revenue data.csv"
+            file_paths = [
+                "Campaign Data/Unity Ads/Android/Adspend and Revenue data.csv",
+                "Campaign Data/Unity Ads/Android/Adspend and Revenue data.xlsx"
+            ]
         elif dataset.source_platform == "unity_ads" and dataset.channel == "ios":
-            csv_path = "Campaign Data/Unity Ads/iOS/Adspend+ Revenue .csv"
+            file_paths = [
+                "Campaign Data/Unity Ads/iOS/Adspend+ Revenue .csv",
+                "Campaign Data/Unity Ads/iOS/Adspend+ Revenue .xlsx"
+            ]
         elif dataset.source_platform == "mistplay" and dataset.channel == "android":
-            csv_path = "Campaign Data/Mistplay/Android/Adspend & Revenue.csv"
+            file_paths = [
+                "Campaign Data/Mistplay/Android/Adspend & Revenue.csv",
+                "Campaign Data/Mistplay/Android/Adspend & Revenue.xlsx"
+            ]
         
-        # If specific path doesn't exist, try to find any CSV file
-        if not csv_path or not os.path.exists(csv_path):
+        # If specific paths don't exist, try to find any CSV/Excel file
+        if not file_paths or not any(os.path.exists(f) for f in file_paths):
             import glob
-            # Look for CSV files in various locations
-            csv_files = (
+            # Look for CSV and Excel files in various locations
+            all_files = (
                 glob.glob("Campaign Data/**/*.csv", recursive=True) +
+                glob.glob("Campaign Data/**/*.xlsx", recursive=True) +
+                glob.glob("Campaign Data/**/*.xls", recursive=True) +
                 glob.glob("data/raw/*.csv") +
-                glob.glob("*.csv")
+                glob.glob("data/raw/*.xlsx") +
+                glob.glob("data/raw/*.xls") +
+                glob.glob("*.csv") +
+                glob.glob("*.xlsx") +
+                glob.glob("*.xls")
             )
             # Filter out template files and artifacts
-            csv_files = [f for f in csv_files if not any(x in f.lower() for x in ['template', 'feature_importance', 'gamlens_env'])]
-            
-            if csv_files:
-                # Use the first CSV file found
-                csv_path = csv_files[0]
-            else:
-                return None
+            all_files = [f for f in all_files if not any(x in f.lower() for x in ['template', 'feature_importance', 'gamlens_env'])]
+            file_paths = all_files
         
-        if csv_path and os.path.exists(csv_path):
-            df = pd.read_csv(csv_path)
-            # Normalize column names (strip spaces, lowercase)
-            df.columns = [col.strip().lower() for col in df.columns]
-            return df
-        else:
-            return None
+        # Try each file path
+        for file_path in file_paths:
+            if os.path.exists(file_path):
+                # Determine file type and read accordingly
+                if file_path.lower().endswith('.csv'):
+                    df = pd.read_csv(file_path)
+                elif file_path.lower().endswith(('.xlsx', '.xls')):
+                    df = pd.read_excel(file_path)
+                else:
+                    continue
+                
+                # Normalize column names (strip spaces, lowercase)
+                df.columns = [col.strip().lower() for col in df.columns]
+                return df
+        
+        return None
     except Exception as e:
-        print(f"Error loading raw CSV data: {e}")
+        print(f"Error loading raw data: {e}")
         return None
 
 # Page configuration
