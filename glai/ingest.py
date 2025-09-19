@@ -184,6 +184,31 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
                 df_normalized = df_normalized.rename(columns={col: target_col})
                 break
     
+    # CRITICAL FIX: Handle whitespace variants for ALL platforms (not just known ones)
+    # This prevents cost/revenue data loss when platform detection fails
+    whitespace_fixes = {
+        ' cost ': 'cost',
+        ' revenue ': 'revenue', 
+        ' Cost ': 'cost',
+        ' Revenue ': 'revenue',
+        ' COST ': 'cost',
+        ' REVENUE ': 'revenue',
+        ' cost': 'cost',
+        ' revenue': 'revenue',
+        'cost ': 'cost',
+        'revenue ': 'revenue',
+        ' installs ': 'installs',
+        ' Installs ': 'installs',
+        ' INSTALLS ': 'installs',
+        ' date ': 'date',
+        ' Date ': 'date',
+        ' DATE ': 'date'
+    }
+    
+    for old_col, new_col in whitespace_fixes.items():
+        if old_col in df_normalized.columns and new_col not in df_normalized.columns:
+            df_normalized = df_normalized.rename(columns={old_col: new_col})
+    
     # Generic normalization for ROAS/Retention regardless of platform (case-insensitive)
     import re as _re
     rename_map: dict = {}
