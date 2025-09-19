@@ -54,7 +54,8 @@ def _gather_files_from_globs() -> List[Path]:
     filtered = [
         path
         for path in files
-        if not any(token in path.name.lower() for token in ["template", "feature_importance", "gamlens_env"])
+        if not any(token in path.name.lower() for token in ["template", "feature_importance", "gamlens_env", "demo_"])
+        and not path.name.startswith("~$")  # Exclude temporary Excel files
     ]
     return filtered
 
@@ -74,6 +75,10 @@ def _read_dataframe(file_path: Path) -> Optional[pd.DataFrame]:
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [str(col).strip().lower() for col in df.columns]
+    
+    # Handle duplicate columns by keeping the first occurrence
+    df = df.loc[:, ~df.columns.duplicated()]
+    
     return df
 
 

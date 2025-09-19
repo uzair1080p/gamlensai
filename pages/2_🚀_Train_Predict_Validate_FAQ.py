@@ -959,6 +959,11 @@ def show_predictions_tab():
                             revenue_val = 0
                         
                         installs = row.get("installs", 0)
+                        # Handle NaT and other non-numeric values
+                        try:
+                            installs = float(installs) if pd.notna(installs) and installs != 0 else 0
+                        except (ValueError, TypeError):
+                            installs = 0
                         cpi = cost_val / installs if installs > 0 else 0
                         
                         # Calculate ROAS from cost/revenue if ROAS columns are missing
@@ -1284,6 +1289,11 @@ def show_predictions_tab():
                                 revenue_val = 0
                             
                             installs = row.get("installs", 0)
+                            # Handle NaT and other non-numeric values
+                            try:
+                                installs = float(installs) if pd.notna(installs) and installs != 0 else 0
+                            except (ValueError, TypeError):
+                                installs = 0
                             cpi = cost_val / installs if installs > 0 else 0
                             
                             # Calculate ROAS from cost/revenue if ROAS columns are missing
