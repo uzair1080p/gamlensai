@@ -1368,7 +1368,7 @@ def show_predictions_tab():
                 )
                 # Inject a lightweight summary of recommendations into context
                 context["ai_recommendations"] = {
-                    "count": int(len(gpt_map))
+                    "count": int(len(gpt_map)) if gpt_map else 0
                     # Removed actions_breakdown to prevent "Cut" bias in FAQ responses
                 }
                 # Include compact dataset for the prompt
@@ -1376,6 +1376,15 @@ def show_predictions_tab():
                 # Mark that we have AI predictions available
                 context["has_predictions"] = True
                 context["model_type"] = "Adaptive AI Recommendations (GPT-powered)"
+                
+                # Debug: Show what's being sent to FAQ
+                st.info(f"🔍 FAQ Context Debug:")
+                st.info(f"  - GPT recommendations count: {len(gpt_map) if gpt_map else 0}")
+                st.info(f"  - Dataset compact rows: {len(compact_for_faq) if compact_for_faq else 0}")
+                if compact_for_faq and len(compact_for_faq) > 0:
+                    st.info(f"  - First row CPI: {compact_for_faq[0].get('CPI ($)', 'N/A')}")
+                    st.info(f"  - First row ROAS D7: {compact_for_faq[0].get('ROAS D7 (%)', 'N/A')}")
+                    st.info(f"  - First row Action: {compact_for_faq[0].get('Recommended Action', 'N/A')}")
                 client_questions = [
                     "When will ROI of 100% be achieved on this channel? D15? D30? D90?",
                     "Should we continue running this campaign or pause it?",
