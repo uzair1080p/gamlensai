@@ -11,6 +11,7 @@ from glai.db import get_db_session
 from glai.models import Dataset, ModelVersion, PredictionRun
 from glai.predict import load_predictions
 from glai.train import load_model_artifacts
+from glai.usage import record_event
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ class GameLensFAQGPT:
     
     def __init__(self):
         self.client = None
+        self.last_debug: Dict[str, Any] = {}
         api_key = os.getenv('OPENAI_API_KEY')
         print(f"FAQ GPT Debug - API key found: {api_key is not None}")
         if api_key:
@@ -204,30 +206,19 @@ class GameLensFAQGPT:
             print(f"Client available: {self.client is not None}")
             print(f"Context JSON length: {len(context_str)} characters")
             
-            # Create system prompt
-            system_prompt = """You are an expert data scientist and business analyst for GameLens AI, a ROAS (Return on Ad Spend) forecasting platform for mobile game studios.
-
-Your role is to provide intelligent, actionable answers to business questions about advertising campaign performance, ROAS predictions, and optimization strategies.
-
-Key capabilities of the platform:
-- Predict ROAS from early campaign data (3 days) using machine learning
-- Support multiple advertising platforms (Unity Ads, Mistplay, Facebook Ads, etc.)
-- Provide confidence intervals and uncertainty quantification
-- Generate campaign recommendations (Scale, Maintain, Reduce, Cut)
-- Analyze feature importance and drivers of ROAS
-- Support hierarchical data structure: Game > Platform > Channel > Countries
-
-When answering questions:
-1. Be specific and actionable
-2. Reference the actual data and models available
-3. Direct users to the appropriate tabs/features in the platform
-4. Provide business context and recommendations
-5. Use metrics and data to support your answers
-6. If specific data is not available, explain what's needed to answer the question
-
-IMPORTANT: When AI recommendations are available (has_predictions=true), you can generate forecasts and projections based on the campaign data and recommendations. For ROI timing questions (D15, D30, D90), analyze the available cost/revenue data and retention rates to estimate when campaigns might reach 100% ROI. Use the AI recommendations (Scale/Maintain/Reduce/Cut) to inform your projections.
-
-Always maintain a professional, consultative tone focused on helping game studios optimize their advertising spend."""
+            # Create system prompt using the user's UA consultant template
+            system_prompt = (
+                "You are an expert User Acquisition & Game Analytics consultant.\n"
+                "You will receive:\n"
+                "1. A dataset of campaign performance (installs, spend, CPI, ROAS by day, retention rates, ARPU/ARPPU, geo, channel, etc.)\n"
+                "2. A specific question from a client.\n\n"
+                "Your task:\n"
+                "- Answer the question quantitatively, using the dataset.\n"
+                "- Do not be vague — always give numbers, thresholds, and projections.\n"
+                "- Where the data shows limits (e.g., retention = 0% by D14), explain why the target cannot be reached without changes.\n"
+                "- Provide solid, actionable levers (CPI reduction, retention uplift, ARPU uplift, budget reallocation, etc.)\n"
+                "- Summarize at the end with a **⚡ Bottom line** section that is concise and prescriptive.\n"
+            )
             
             # Create a condensed context for GPT to avoid token limits
             condensed_context = {
@@ -235,6 +226,7 @@ Always maintain a professional, consultative tone focused on helping game studio
                 "ai_recommendations_summary": context.get("ai_recommendations", {}),
                 "model_type": context.get("model_type", "Unknown"),
                 "dataset_info": context.get("current_context", {}).get("selected_dataset", {}),
+                "dataset_compact": context.get("dataset_compact", []),
                 "system_capabilities": context.get("system_info", {}).get("capabilities", [])
             }
             
@@ -242,36 +234,114 @@ Always maintain a professional, consultative tone focused on helping game studio
             print(f"Original context length: {len(context_str)} characters")
             print(f"Condensed context length: {len(condensed_context_str)} characters")
             
-            # Create user prompt
-            user_prompt = f"""Please answer this business question about ROAS forecasting and campaign optimization:
-
-Question: {question}
-
-Context about the current GameLens AI session:
-{condensed_context_str}
-
-Please provide a comprehensive, actionable answer that helps the user make informed decisions about their advertising campaigns."""
+            # Create user prompt with explicit DATASET/QUESTION blocks
+            user_prompt = (
+                "---\nDATASET:\n"
+                f"{condensed_context_str}\n\n"
+                "QUESTION:\n"
+                f"{question}\n---\n"
+                "For each Campaign/Channel, if helpful, include a compact table with: Campaign | CPI ($) | Installs | ROAS D7 (%) | ROAS D14 (%) | ROI 100% By (Day) | Retention D7 (%) | ARPU Needed for Break-even ($) | Recommended Action."
+            )
             
             # Call GPT
             print(f"Making GPT API call...")
             print(f"System prompt length: {len(system_prompt)} characters")
             print(f"User prompt length: {len(user_prompt)} characters")
             
+            # Save debug details before the call
+            self.last_debug = {
+                "question": question,
+                "context_keys": list(context.keys()),
+                "has_predictions": context.get("has_predictions", False),
+                "model_type": context.get("model_type"),
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "context_lengths": {
+                    "full": len(context_str),
+                    "condensed": len(condensed_context_str)
+                }
+            }
+
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-5-nano",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=500,
-                temperature=0.3
+                max_completion_tokens=500
             )
             
             print(f"GPT API call successful!")
             print(f"Response object: {type(response)}")
             print(f"Number of choices: {len(response.choices)}")
-            
-            answer = response.choices[0].message.content.strip()
+
+            # Safe extraction of content; retry once with gpt-5-mini if empty
+            try:
+                primary_choice = response.choices[0]
+                answer = (getattr(primary_choice.message, "content", None) or "").strip()
+            except Exception:
+                answer = ""
+
+            if not answer:
+                print("Empty content from gpt-5-nano. Retrying once with gpt-5-mini...")
+                response_retry = self.client.chat.completions.create(
+                    model="gpt-5-mini",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_completion_tokens=600
+                )
+                try:
+                    retry_choice = response_retry.choices[0]
+                    answer = (getattr(retry_choice.message, "content", None) or "").strip()
+                except Exception:
+                    answer = ""
+
+            if not answer:
+                # Final fallback to a GPT-4 class model
+                print("Empty content again. Falling back to gpt-4o-mini...")
+                response_retry2 = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_completion_tokens=600
+                )
+                try:
+                    retry_choice2 = response_retry2.choices[0]
+                    answer = (getattr(retry_choice2.message, "content", None) or "").strip()
+                except Exception:
+                    answer = ""
+            # Update debug with response meta
+            self.last_debug.update({
+                "response_preview": answer[:500],
+                "response_length": len(answer),
+                "choices": len(response.choices)
+            })
+            # Token usage accounting if present
+            try:
+                usage = getattr(response, "usage", None)
+                in_tok = int(getattr(usage, "prompt_tokens", 0) or 0)
+                out_tok = int(getattr(usage, "completion_tokens", 0) or 0)
+            except Exception:
+                in_tok = 0
+                out_tok = 0
+            record_event(
+                kind="faq",
+                model="gpt-5-nano",
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                meta={
+                    "question": question,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "context_lengths": self.last_debug.get("context_lengths", {}),
+                    "save_raw": True,
+                    "response_preview": answer[:2000],
+                },
+            )
             print(f"Generated answer length: {len(answer)} characters")
             print(f"Generated answer preview: {answer[:200]}...")
             print(f"=== FAQ GPT DEBUG END ===\n")
@@ -284,12 +354,23 @@ Please provide a comprehensive, actionable answer that helps the user make infor
             print(f"Error message: {str(e)}")
             print(f"Error details: {repr(e)}")
             print(f"=== END ERROR ===\n")
+            # Record the error in debug state
+            self.last_debug.update({
+                "error": {
+                    "type": str(type(e)),
+                    "message": str(e)
+                }
+            })
             
             fallback_answer = self._generate_fallback_answer(question, context)
             print(f"Fallback answer: {fallback_answer}")
             if fallback_answer is None:
                 return "Unable to generate answer at this time. Please try again later."
             return fallback_answer
+
+    def get_last_debug(self) -> Dict[str, Any]:
+        """Expose last call's debug details for UI debugging."""
+        return self.last_debug
     
     def _generate_fallback_answer(self, question: str, context: Dict[str, Any]) -> str:
         """Generate fallback answer when GPT is not available"""
@@ -299,7 +380,9 @@ Please provide a comprehensive, actionable answer that helps the user make infor
         # Check if we have model and dataset context
         has_model = context.get("current_context", {}).get("selected_model")
         has_dataset = context.get("current_context", {}).get("selected_dataset")
-        has_ai_recommendations = context.get("has_predictions", False) and context.get("ai_recommendations", {}).get("count", 0) > 0
+        # Treat Adaptive AI mode as GPT-eligible even if the actions list is empty
+        is_adaptive_ai = context.get("model_type", "").lower().startswith("adaptive ai recommendations")
+        has_ai_recommendations = context.get("has_predictions", False) or is_adaptive_ai
         
         if "roi" in question_lower and ("100%" in question or "d15" in question_lower or "d30" in question_lower or "d90" in question_lower):
             if has_model and has_dataset:

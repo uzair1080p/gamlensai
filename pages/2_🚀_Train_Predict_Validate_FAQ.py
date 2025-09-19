@@ -42,10 +42,19 @@ def load_raw_csv_data(dataset):
         elif dataset.source_platform == "mistplay" and dataset.channel == "android":
             csv_path = "Campaign Data/Mistplay/Android/Adspend & Revenue.csv"
         else:
-            return None
+            # For other datasets, try to find any CSV file in the data directory
+            import glob
+            csv_files = glob.glob("data/raw/*.csv") + glob.glob("*.csv")
+            if csv_files:
+                # Use the first CSV file found
+                csv_path = csv_files[0]
+            else:
+                return None
             
         if os.path.exists(csv_path):
             df = pd.read_csv(csv_path)
+            # Normalize column names (strip spaces, lowercase)
+            df.columns = [col.strip().lower() for col in df.columns]
             return df
         else:
             return None
@@ -897,22 +906,44 @@ def show_predictions_tab():
             # ROAS projections table
             st.subheader("ROAS Projections")
             
-            # Create display dataframe
-            display_df = pred_df.copy()
-            display_df['Campaign'] = display_df.index + 1
-            display_df['Predicted ROAS (p50)'] = display_df['predicted_roas_p50'].round(4)
-            display_df['Confidence Interval'] = display_df['confidence_interval'].round(4)
-            display_df['p10'] = display_df['predicted_roas_p10'].round(4)
-            display_df['p90'] = display_df['predicted_roas_p90'].round(4)
-            
+            # Create summary dataframe for client-facing table
+            base_df = load_dataset_data(selected_dataset)
+            summary_df = pred_df.copy()
+            summary_df['Campaign'] = summary_df.index + 1
+            # CPI and Installs from dataset
+            if 'installs' in base_df.columns:
+                summary_df['Installs'] = base_df['installs'].values
+            else:
+                summary_df['Installs'] = 0
+            if all(col in base_df.columns for col in ['cost','installs']):
+                with pd.option_context('mode.use_inf_as_na', True):
+                    summary_df['CPI ($)'] = (base_df['cost'] / base_df['installs']).replace([pd.NA, pd.NaT], 0).fillna(0).round(2)
+            else:
+                summary_df['CPI ($)'] = 0.0
+            # ROAS D7/D14 from dataset if present
+            summary_df['ROAS D7 (%)'] = (base_df['roas_d7']*100).round(1) if 'roas_d7' in base_df.columns else pd.Series([None]*len(base_df))
+            summary_df['ROAS D14 (%)'] = (base_df['roas_d14']*100).round(1) if 'roas_d14' in base_df.columns else pd.Series([None]*len(base_df))
+            # ROI 100% By (Day): simple check against target day
+            summary_df['ROI 100% By (Day)'] = summary_df['predicted_roas_p50'].apply(lambda x: selected_model.target_day if pd.notna(x) and x>=1.0 else None)
+            # Retention D7
+            if 'retention_d7' in base_df.columns:
+                summary_df['Retention D7 (%)'] = (base_df['retention_d7']*100).round(1)
+            elif 'retention_d7_rate' in base_df.columns:
+                summary_df['Retention D7 (%)'] = (base_df['retention_d7_rate']*100).round(1)
+            else:
+                summary_df['Retention D7 (%)'] = None
+            # ARPU needed for break-even approximated as CPI
+            summary_df['ARPU Needed for Break-even ($)'] = summary_df['CPI ($)']
             # Add recommendations
             recommendations = generate_recommendations(pred_df)
             action_mapping = {}
             for action, data in recommendations.items():
                 for campaign in data['campaigns']:
                     action_mapping[campaign['row_index']] = action.title()
-            
-            display_df['Action'] = display_df['row_index'].map(action_mapping)
+            summary_df['Recommended Action'] = summary_df['row_index'].map(action_mapping)
+            # Select and order columns for display
+            client_columns = ['Campaign','CPI ($)','Installs','ROAS D7 (%)','ROAS D14 (%)','ROI 100% By (Day)','Retention D7 (%)','ARPU Needed for Break-even ($)','Recommended Action']
+            st.dataframe(summary_df[client_columns], use_container_width=True)
 
             # Optional: Augment with GPT-powered recommendations
             default_gpt = True if force_gpt else False
@@ -928,20 +959,55 @@ def show_predictions_tab():
                     if 'budget_change_pct' in next(iter(gpt_map.values()), {}):
                         display_df['GPT Budget %'] = display_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
             
-            # Select columns for display
-            display_columns = ['Campaign', 'Predicted ROAS (p50)', 'p10', 'p90', 'Confidence Interval', 'Action']
-            if 'cost' in display_df.columns:
-                display_columns.insert(-1, 'cost')
-            if 'revenue' in display_df.columns:
-                display_columns.insert(-1, 'revenue')
-            if 'GPT Action' in display_df.columns:
-                display_columns.append('GPT Action')
-            if 'GPT Rationale' in display_df.columns:
-                display_columns.append('GPT Rationale')
-            if 'GPT Budget %' in display_df.columns:
-                display_columns.append('GPT Budget %')
-            
-            st.dataframe(display_df[display_columns], use_container_width=True)
+            # Build compact dataset for FAQ context using raw CSV data
+            try:
+                # Try to get raw CSV data for FAQ context
+                raw_df = load_raw_csv_data(selected_dataset)
+                if raw_df is not None and not raw_df.empty:
+                    # Build FAQ data from raw CSV
+                    compact_for_faq = []
+                    for i, row in raw_df.iterrows():
+                        # Parse cost and revenue from raw strings (using normalized column names)
+                        cost_str = str(row.get("cost", "0")).replace("$", "").replace(",", "").strip()
+                        revenue_str = str(row.get("revenue", "0")).replace("$", "").replace(",", "").strip()
+                        
+                        try:
+                            cost_val = float(cost_str) if cost_str and cost_str != "0" and cost_str != "-" else 0
+                            revenue_val = float(revenue_str) if revenue_str and revenue_str != "0" and revenue_str != "-" else 0
+                        except (ValueError, TypeError):
+                            cost_val = 0
+                            revenue_val = 0
+                        
+                        installs = row.get("installs", 0)
+                        cpi = cost_val / installs if installs > 0 else 0
+                        
+                        # Calculate ROAS from cost/revenue if ROAS columns are missing
+                        roas_d7 = row.get("roas_d7", 0)
+                        roas_d14 = row.get("roas_d14", 0)
+                        if pd.isna(roas_d7) or roas_d7 == 0:
+                            roas_d7 = (revenue_val / cost_val) if cost_val > 0 else 0
+                        if pd.isna(roas_d14) or roas_d14 == 0:
+                            roas_d14 = (revenue_val / cost_val) if cost_val > 0 else 0
+                        
+                        compact_row = {
+                            "Campaign": i + 1,
+                            "CPI ($)": round(cpi, 2),
+                            "Installs": installs,
+                            "ROAS D7 (%)": round(roas_d7 * 100, 2) if pd.notna(roas_d7) else 0,
+                            "ROAS D14 (%)": round(roas_d14 * 100, 2) if pd.notna(roas_d14) else 0,
+                            "ROI 100% By (Day)": None,
+                            "Retention D7 (%)": row.get("retention_rate_d7", None),
+                            "ARPU Needed for Break-even ($)": round(cost_val / installs, 2) if installs > 0 else 0,
+                            "Recommended Action": "Unknown"  # No GPT actions for model-based predictions
+                        }
+                        compact_for_faq.append(compact_row)
+                else:
+                    # Fallback to processed data
+                    compact_for_faq = summary_df[client_columns].head(100).to_dict(orient='records')
+            except Exception as e:
+                st.warning(f"Could not load raw CSV for FAQ context: {e}")
+                # Fallback to processed data
+                compact_for_faq = summary_df[client_columns].head(100).to_dict(orient='records')
             
             # Visualizations
             col1, col2 = st.columns(2)
@@ -1045,7 +1111,20 @@ def show_predictions_tab():
                             pass
                 # Data is already normalized in the dataset loader, no need to re-parse
 
-                # Call GPT recommender
+                # Send raw CSV data directly to GPT without any preprocessing
+                try:
+                    # Try to load raw CSV data first
+                    raw_df = load_raw_csv_data(selected_dataset)
+                    if raw_df is not None:
+                        # Use raw CSV data directly
+                        gpt_df = raw_df.copy()
+                        st.info("📄 Using raw CSV data for GPT analysis")
+                    else:
+                        st.warning("⚠️ Raw CSV not found, using normalized data")
+                except Exception as e:
+                    st.warning(f"⚠️ Could not load raw CSV: {e}, using normalized data")
+
+                # Call GPT recommender with raw data
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
                     gpt_map = get_gpt_recommendations(gpt_df)
                 # Display table - create from base_df to ensure data integrity
@@ -1086,21 +1165,92 @@ def show_predictions_tab():
                     
                     if columns_to_drop:
                         gpt_display = gpt_display.drop(columns=list(set(columns_to_drop)), errors='ignore')
-                gpt_display['GPT Action'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
-                gpt_display['GPT Rationale'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('rationale'))
-                gpt_display['GPT Budget %'] = gpt_display['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('budget_change_pct'))
-                cols = ['Campaign']
-                # Cost and Revenue columns are temporarily hidden
-                cols += ['GPT Action', 'GPT Rationale']
-                if 'GPT Budget %' in gpt_display.columns:
-                    cols.append('GPT Budget %')
-                st.dataframe(gpt_display[cols], use_container_width=True)
+                # Build client-facing summary table for GPT-only path
+                summary_df = gpt_display.copy()
+                # CPI and Installs
+                summary_df['Installs'] = gpt_display['installs'] if 'installs' in gpt_display.columns else 0
+                if 'cost' in gpt_display.columns and 'installs' in gpt_display.columns:
+                    with pd.option_context('mode.use_inf_as_na', True):
+                        summary_df['CPI ($)'] = (gpt_display.get('cost', 0) / gpt_display.get('installs', 1)).replace([pd.NA, pd.NaT], 0).fillna(0).round(2)
+                else:
+                    summary_df['CPI ($)'] = 0.0
+                # ROAS D7/D14 from dataset if present
+                summary_df['ROAS D7 (%)'] = (gpt_display['roas_d7']*100).round(1) if 'roas_d7' in gpt_display.columns else None
+                summary_df['ROAS D14 (%)'] = (gpt_display['roas_d14']*100).round(1) if 'roas_d14' in gpt_display.columns else None
+                # ROI 100% By (Day) not available without local model
+                summary_df['ROI 100% By (Day)'] = None
+                # Retention D7
+                if 'retention_d7' in gpt_display.columns:
+                    summary_df['Retention D7 (%)'] = (gpt_display['retention_d7']*100).round(1)
+                elif 'retention_d7_rate' in gpt_display.columns:
+                    summary_df['Retention D7 (%)'] = (gpt_display['retention_d7_rate']*100).round(1)
+                else:
+                    summary_df['Retention D7 (%)'] = None
+                # ARPU needed for break-even approximated as CPI
+                summary_df['ARPU Needed for Break-even ($)'] = summary_df['CPI ($)']
+                # Map GPT actions
+                summary_df['Recommended Action'] = summary_df['row_index'].map(lambda i: gpt_map.get(int(i), {}).get('action'))
+                client_columns = ['Campaign','CPI ($)','Installs','ROAS D7 (%)','ROAS D14 (%)','ROI 100% By (Day)','Retention D7 (%)','ARPU Needed for Break-even ($)','Recommended Action']
+                st.dataframe(summary_df[client_columns], use_container_width=True)
+                # Build compact dataset for FAQ prompt using raw CSV data
+                try:
+                    # Try to get raw CSV data for FAQ context
+                    raw_df = load_raw_csv_data(selected_dataset)
+                    if raw_df is not None and not raw_df.empty:
+                        # Build FAQ data from raw CSV
+                        compact_for_faq = []
+                        for i, row in raw_df.iterrows():
+                            # Parse cost and revenue from raw strings (using normalized column names)
+                            cost_str = str(row.get("cost", "0")).replace("$", "").replace(",", "").strip()
+                            revenue_str = str(row.get("revenue", "0")).replace("$", "").replace(",", "").strip()
+                            
+                            try:
+                                cost_val = float(cost_str) if cost_str and cost_str != "0" and cost_str != "-" else 0
+                                revenue_val = float(revenue_str) if revenue_str and revenue_str != "0" and revenue_str != "-" else 0
+                            except (ValueError, TypeError):
+                                cost_val = 0
+                                revenue_val = 0
+                            
+                            installs = row.get("installs", 0)
+                            cpi = cost_val / installs if installs > 0 else 0
+                            
+                            # Calculate ROAS from cost/revenue if ROAS columns are missing
+                            roas_d7 = row.get("roas_d7", 0)
+                            roas_d14 = row.get("roas_d14", 0)
+                            if pd.isna(roas_d7) or roas_d7 == 0:
+                                roas_d7 = (revenue_val / cost_val) if cost_val > 0 else 0
+                            if pd.isna(roas_d14) or roas_d14 == 0:
+                                roas_d14 = (revenue_val / cost_val) if cost_val > 0 else 0
+                            
+                            compact_row = {
+                                "Campaign": i + 1,
+                                "CPI ($)": round(cpi, 2),
+                                "Installs": installs,
+                                "ROAS D7 (%)": round(roas_d7 * 100, 2) if pd.notna(roas_d7) else 0,
+                                "ROAS D14 (%)": round(roas_d14 * 100, 2) if pd.notna(roas_d14) else 0,
+                                "ROI 100% By (Day)": None,
+                                "Retention D7 (%)": row.get("retention_rate_d7", None),
+                                "ARPU Needed for Break-even ($)": round(cost_val / installs, 2) if installs > 0 else 0,
+                                "Recommended Action": gpt_map.get(i, {}).get("action", "Unknown")
+                            }
+                            compact_for_faq.append(compact_row)
+                    else:
+                        # Fallback to processed data
+                        compact_for_faq = summary_df[client_columns].head(100).to_dict(orient='records')
+                except Exception as e:
+                    st.warning(f"Could not load raw CSV for FAQ context: {e}")
+                    # Fallback to processed data
+                    compact_for_faq = summary_df[client_columns].head(100).to_dict(orient='records')
 
                 with st.expander("Show AI payload preview"):
                     st.write("GPT DataFrame shape:", gpt_df.shape)
                     st.write("GPT DataFrame columns:", gpt_df.columns.tolist())
                     st.write("Cost column sample:", gpt_df['cost'].head().tolist() if 'cost' in gpt_df.columns else "No cost column")
                     st.write("Revenue column sample:", gpt_df['revenue'].head().tolist() if 'revenue' in gpt_df.columns else "No revenue column")
+                    if 'cost_raw' in gpt_df.columns:
+                        st.write("Cost raw sample:", gpt_df['cost_raw'].head().tolist())
+                    if 'revenue_raw' in gpt_df.columns:
+                        st.write("Revenue raw sample:", gpt_df['revenue_raw'].head().tolist())
                     st.write(gpt_df.head(10))
 
                 # Auto-answer client FAQs using current context + GPT outputs
@@ -1113,12 +1263,11 @@ def show_predictions_tab():
                 )
                 # Inject a lightweight summary of recommendations into context
                 context["ai_recommendations"] = {
-                    "count": int(len(gpt_map)),
-                    "actions_breakdown": {
-                        k: sum(1 for v in gpt_map.values() if v.get('action') == k)
-                        for k in ["Scale", "Maintain", "Reduce", "Cut"]
-                    }
+                    "count": int(len(gpt_map))
+                    # Removed actions_breakdown to prevent "Cut" bias in FAQ responses
                 }
+                # Include compact dataset for the prompt
+                context["dataset_compact"] = compact_for_faq
                 # Mark that we have AI predictions available
                 context["has_predictions"] = True
                 context["model_type"] = "Adaptive AI Recommendations (GPT-powered)"
@@ -1134,6 +1283,31 @@ def show_predictions_tab():
                         with st.spinner("Generating..."):
                             ans = faq_gpt.generate_faq_answer(q, context)
                         st.write(ans)
+                # Deep debug dropdown for GPT payload/response
+                with st.expander("🔎 GPT debug (payload, prompts, errors)"):
+                    # Be defensive in case the running server has an older class without this helper
+                    try:
+                        get_debug = getattr(faq_gpt, "get_last_debug", None)
+                        debug = get_debug() if callable(get_debug) else {}
+                        if not debug and not callable(get_debug):
+                            st.caption("Debug API not available in this session. Restart the app to load the latest code if needed.")
+                    except Exception as _dbg_e:
+                        debug = {}
+                        st.error(f"Debug retrieval failed: {_dbg_e}")
+                    st.write("Client available:", debug.get('client_available', True))
+                    st.write("Model type:", context.get('model_type'))
+                    st.write("Has predictions:", context.get('has_predictions'))
+                    st.write("Context keys:", debug.get('context_keys'))
+                    st.write("Context lengths:", debug.get('context_lengths'))
+                    st.write("System prompt:")
+                    st.code(debug.get('system_prompt', '')[:4000])
+                    st.write("User prompt:")
+                    st.code(debug.get('user_prompt', '')[:4000])
+                    if 'error' in debug:
+                        st.error(f"Error: {debug['error'].get('message')}")
+                    if 'response_preview' in debug:
+                        st.write("Response preview:")
+                        st.code(debug.get('response_preview', '')[:4000])
             except Exception as e:
                 st.error(f"❌ GPT-only recommendations failed: {e}")
         else:
