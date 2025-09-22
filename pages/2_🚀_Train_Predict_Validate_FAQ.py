@@ -30,12 +30,16 @@ from glai.predict import run_predictions, get_prediction_runs, load_predictions,
 from glai.naming import make_canonical_name
 from glai.faq_gpt import get_faq_gpt
 from glai.recommend_gpt import get_gpt_recommendations
-from glai.raw_source_loader import load_raw_source_dataframe
+from glai.raw_source_loader import load_raw_source_dataframe, load_cleaned_dataframe
 
 
 def load_raw_csv_data(dataset):
     """Load raw CSV/Excel data when normalized data has zeros."""
     try:
+        # Prefer cleaned data from n8n; fallback to local raw loader
+        cleaned = load_cleaned_dataframe(dataset)
+        if cleaned is not None and not cleaned.empty:
+            return cleaned
         return load_raw_source_dataframe(dataset)
     except Exception as e:
         print(f"Error loading raw data: {e}")

@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
+import json
+import httpx
 
 
 def _candidate_directories(dataset) -> List[Path]:
@@ -176,6 +178,101 @@ def load_raw_source_dataframe(dataset) -> Optional[pd.DataFrame]:
         return _normalize_columns(df)
 
     return None
+
+
+def load_cleaned_dataframe(dataset, endpoint_url: str = "http://170.64.236.80:5678/webhook/clean-ua") -> Optional[pd.DataFrame]:
+    """Send the dataset's raw file to the n8n cleaner and return a cleaned dataframe.
+
+    Fallbacks to normal raw loader if the cleaner is unavailable or returns invalid data.
+    """
+    # Reuse candidate resolution from raw loader to find the most likely file path
+    raw_df = None
+    try:
+        raw_df = load_raw_source_dataframe(dataset)
+    except Exception:
+        raw_df = None
+
+    # If we already got a dataframe, try to discover the exact file path used
+    # by searching the same candidate list logic again. We'll resend that file
+    # to the cleaner to ensure strict normalization (currency -> numeric, etc.).
+    # When we cannot resolve a single file path, just return the raw_df.
+    try:
+        raw_filename = getattr(dataset, "raw_filename", None)
+        candidate_paths: List[Path] = []
+        seen_paths = set()
+
+        def add_candidate(path: Path) -> None:
+            try:
+                resolved = path.resolve()
+            except Exception:
+                return
+            if not path.exists() or resolved in seen_paths:
+                return
+            seen_paths.add(resolved)
+            candidate_paths.append(path)
+
+        if raw_filename:
+            requested_path = Path(str(raw_filename).strip())
+            add_candidate(requested_path)
+            for directory in _candidate_directories(dataset):
+                add_candidate(directory / requested_path.name)
+
+        if not candidate_paths:
+            for path in _gather_files_from_globs():
+                add_candidate(path)
+
+        if not candidate_paths:
+            # No file path to send; return whatever raw_df we may have
+            return raw_df
+
+        # Prefer the first viable candidate
+        file_path = candidate_paths[0]
+
+        # Post to n8n cleaner
+        with open(file_path, "rb") as f:
+            files = {"file": (file_path.name, f, "application/octet-stream")}
+            try:
+                with httpx.Client(timeout=60) as client:
+                    resp = client.post(endpoint_url, files=files)
+                if resp.status_code != 200:
+                    return raw_df
+                # Try JSON parse first; if not JSON, try to coerce
+                try:
+                    payload = resp.json()
+                except json.JSONDecodeError:
+                    payload = json.loads(resp.text)
+
+                # Expect either a list of records or an object with a key like 'data'
+                if isinstance(payload, list):
+                    cleaned = pd.DataFrame(payload)
+                elif isinstance(payload, dict):
+                    # common patterns: { data: [...] } or { rows: [...] }
+                    records = None
+                    for key in ("data", "rows", "cleaned", "result"):
+                        if key in payload and isinstance(payload[key], list):
+                            records = payload[key]
+                            break
+                    if records is None:
+                        # Try flattening dict-of-lists
+                        try:
+                            cleaned = pd.json_normalize(payload)
+                        except Exception:
+                            return raw_df
+                    else:
+                        cleaned = pd.DataFrame(records)
+                else:
+                    return raw_df
+
+                if cleaned is None or cleaned.empty:
+                    return raw_df
+
+                return _normalize_columns(cleaned)
+            except Exception:
+                # Any failure -> fallback to raw_df
+                return raw_df
+    except Exception:
+        return raw_df
+
 
 
 __all__ = ["load_raw_source_dataframe"]
