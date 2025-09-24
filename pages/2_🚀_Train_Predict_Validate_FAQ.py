@@ -1100,18 +1100,29 @@ def show_predictions_tab():
                             pass
                 # Data is already normalized in the dataset loader, no need to re-parse
 
-                # Send raw CSV data directly to GPT without any preprocessing
+                # Choose best data source: prefer normalized data if it has non-zero values
                 try:
-                    # Try to load raw CSV data first
-                    raw_df = load_raw_csv_data(selected_dataset)
-                    if raw_df is not None:
-                        # Use raw CSV data directly
-                        gpt_df = raw_df.copy()
-                        st.info("📄 Using raw CSV data for GPT analysis")
+                    # Check if normalized data has meaningful values (non-zero cost/revenue)
+                    has_meaningful_data = False
+                    if 'cost' in base_df.columns and 'revenue' in base_df.columns:
+                        has_meaningful_data = base_df['cost'].sum() > 0 and base_df['revenue'].sum() > 0
+                    
+                    if has_meaningful_data:
+                        # Use normalized data (parquet) - it has good values
+                        gpt_df = base_df.copy()
+                        st.info("✅ Using normalized dataset data (parquet)")
                     else:
-                        st.warning("⚠️ Raw CSV not found, using normalized data")
+                        # Fall back to raw CSV if normalized data has zeros
+                        raw_df = load_raw_csv_data(selected_dataset)
+                        if raw_df is not None:
+                            gpt_df = raw_df.copy()
+                            st.info("📄 Using raw CSV data for GPT analysis")
+                        else:
+                            gpt_df = base_df.copy()
+                            st.warning("⚠️ Raw CSV not found, using normalized data")
                 except Exception as e:
                     st.warning(f"⚠️ Could not load raw CSV: {e}, using normalized data")
+                    gpt_df = base_df.copy()
 
                 # Call GPT recommender with raw data
                 with st.spinner("Calling GPT for campaign-level recommendations..."):
@@ -1122,31 +1133,26 @@ def show_predictions_tab():
                 # Add row_index for GPT mapping
                 gpt_display['row_index'] = gpt_display.index
                 
-                # Check if cost/revenue are all zeros (old normalized data) and try to load raw CSV
-                if 'cost' in gpt_display.columns and gpt_display['cost'].sum() == 0:
-                    st.warning("⚠️ Detected old normalized data with zeros. Loading raw CSV data...")
-                    try:
-                        # Try to load raw CSV data
-                        raw_df = load_raw_csv_data(selected_dataset)
-                        if raw_df is not None and 'cost' in raw_df.columns:
-                            gpt_display['Cost'] = raw_df['cost'].astype(str)
-                            gpt_display['Revenue'] = raw_df['revenue'].astype(str) if 'revenue' in raw_df.columns else gpt_display['revenue'].astype(str)
-                            st.success("✅ Loaded raw CSV data with currency strings")
-                        else:
-                            gpt_display['Cost'] = gpt_display['cost'].astype(str)
-                            gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
-                    except Exception as e:
-                        st.error(f"Could not load raw data: {e}")
-                        gpt_display['Cost'] = gpt_display['cost'].astype(str)
-                        gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                # Use the data that was already selected (either normalized or raw)
+                # The gpt_df already contains the best available data
+                if 'cost' in gpt_display.columns and 'revenue' in gpt_display.columns:
+                    # Use the actual values from the selected data source
+                    gpt_display['Cost'] = gpt_df['cost'].astype(str) if 'cost' in gpt_df.columns else gpt_display['cost'].astype(str)
+                    gpt_display['Revenue'] = gpt_df['revenue'].astype(str) if 'revenue' in gpt_df.columns else gpt_display['revenue'].astype(str)
                 else:
-                    # As requested, do not show 'Cost' and 'Revenue' columns for now
-                    columns_to_drop = []
+                    # Fallback for missing columns
                     if 'cost' in gpt_display.columns:
-                        columns_to_drop.append('cost')
+                        gpt_display['Cost'] = gpt_display['cost'].astype(str)
                     if 'revenue' in gpt_display.columns:
-                        columns_to_drop.append('revenue')
-                    # Also check for 'Cost' and 'Revenue' if they were created by other logic
+                        gpt_display['Revenue'] = gpt_display['revenue'].astype(str)
+                
+                # As requested, do not show 'Cost' and 'Revenue' columns for now
+                columns_to_drop = []
+                if 'cost' in gpt_display.columns:
+                    columns_to_drop.append('cost')
+                if 'revenue' in gpt_display.columns:
+                    columns_to_drop.append('revenue')
+                # Also check for 'Cost' and 'Revenue' if they were created by other logic
                     if 'Cost' in gpt_display.columns:
                         columns_to_drop.append('Cost')
                     if 'Revenue' in gpt_display.columns:
