@@ -1591,14 +1591,39 @@ def show_faq_tab():
     with col4:
         country_filter = st.selectbox("Country", countries, key="faq_country")
     
-    # Custom question input
-    st.subheader("Ask a Question")
-    custom_question = st.text_input(
-        "Ask anything about your ROAS forecasting:",
-        placeholder="e.g., What insights can you provide about our campaign performance?"
-    )
+    # Custom chatbox interface
+    st.subheader("💬 Ask GPT About Your Data")
     
-    if custom_question:
+    # Chat history in session state
+    if 'chat_history' not in st.session_state:
+        st.session_state['chat_history'] = []
+    
+    # Display chat history
+    if st.session_state['chat_history']:
+        st.markdown("**Chat History:**")
+        for i, (question, answer) in enumerate(st.session_state['chat_history']):
+            with st.expander(f"Q{i+1}: {question[:50]}{'...' if len(question) > 50 else ''}", expanded=False):
+                st.markdown(f"**Question:** {question}")
+                st.markdown(f"**Answer:** {answer}")
+    
+    # Chat input
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        custom_question = st.text_input(
+            "Ask anything about your ROAS forecasting, campaign performance, or data insights:",
+            placeholder="e.g., What insights can you provide about our campaign performance? Which campaigns should we scale?",
+            key="chat_input"
+        )
+    
+    with col2:
+        ask_button = st.button("Ask GPT", type="primary", use_container_width=True)
+    
+    # Clear chat history button
+    if st.button("🗑️ Clear Chat History"):
+        st.session_state['chat_history'] = []
+        st.rerun()
+    
+    if custom_question and ask_button:
         # Generate comprehensive context for GPT
         faq_gpt = get_faq_gpt()
         context = faq_gpt.generate_context_summary(
@@ -1616,8 +1641,17 @@ def show_faq_tab():
         with st.spinner("🤖 Generating intelligent answer..."):
             answer = faq_gpt.generate_faq_answer(custom_question, context)
         
-        st.write("**Answer:**")
-        st.write(answer)
+        # Add to chat history
+        st.session_state['chat_history'].append((custom_question, answer))
+        
+        # Display the answer prominently
+        st.success("✅ Answer generated!")
+        st.markdown("**🤖 GPT Response:**")
+        st.markdown(answer)
+        
+        # Clear the input and rerun to show updated chat history
+        st.session_state['chat_input'] = ""
+        st.rerun()
     
     # Predefined questions from client FAQ
     st.subheader("Common Questions")
