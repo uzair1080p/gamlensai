@@ -1411,6 +1411,66 @@ def show_predictions_tab():
                         st.code(debug.get('response_preview', '')[:4000])
             except Exception as e:
                 st.error(f"❌ GPT-only recommendations failed: {e}")
+        
+        # Add interactive chatbox for follow-up questions
+        if selected_dataset:
+            st.markdown("---")
+            st.subheader("💬 Ask Questions About Your Results")
+            
+            # Chat history for this session
+            chat_key = f"prediction_chat_{selected_dataset.id}"
+            if chat_key not in st.session_state:
+                st.session_state[chat_key] = []
+            
+            # Display chat history
+            if st.session_state[chat_key]:
+                st.markdown("**Previous Questions:**")
+                for i, (question, answer) in enumerate(st.session_state[chat_key]):
+                    with st.expander(f"Q{i+1}: {question[:50]}{'...' if len(question) > 50 else ''}", expanded=False):
+                        st.markdown(f"**Question:** {question}")
+                        st.markdown(f"**Answer:** {answer}")
+            
+            # Chat input
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                follow_up_question = st.text_input(
+                    "Ask follow-up questions about your predictions, campaigns, or recommendations:",
+                    placeholder="e.g., Why did campaign 3 get a 'Cut' recommendation? Which campaigns should I scale?",
+                    key=f"prediction_chat_input_{selected_dataset.id}"
+                )
+            
+            with col2:
+                ask_button = st.button("Ask GPT", type="primary", use_container_width=True, key=f"prediction_ask_{selected_dataset.id}")
+            
+            # Clear chat history button
+            if st.button("🗑️ Clear Chat History", key=f"prediction_clear_{selected_dataset.id}"):
+                st.session_state[chat_key] = []
+                st.rerun()
+            
+            if follow_up_question and ask_button:
+                # Generate context for GPT using the current dataset and predictions
+                faq_gpt = get_faq_gpt()
+                context = faq_gpt.generate_context_summary(
+                    selected_model=selected_model,
+                    selected_dataset=selected_dataset,
+                    filters={}  # No filters for prediction-specific questions
+                )
+                
+                # Generate GPT-powered answer
+                with st.spinner("🤖 Analyzing your question..."):
+                    answer = faq_gpt.generate_faq_answer(follow_up_question, context)
+                
+                # Add to chat history
+                st.session_state[chat_key].append((follow_up_question, answer))
+                
+                # Display the answer prominently
+                st.success("✅ Answer generated!")
+                st.markdown("**🤖 GPT Response:**")
+                st.markdown(answer)
+                
+                # Clear the input and rerun to show updated chat history
+                st.session_state[f"prediction_chat_input_{selected_dataset.id}"] = ""
+                st.rerun()
         else:
             st.info("No predictions found. Run predictions to see results here.")
 
