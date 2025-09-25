@@ -253,6 +253,12 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
             day = m2.group(1)
             rename_map[col] = f"retention_d{day}"
             continue
+        # LEVEL_X_COMPLETION -> level_x_completion
+        m3 = _re.match(r"^level[_\s]*(\d+)[_\s]*completion", lc, flags=_re.IGNORECASE)
+        if m3:
+            level = m3.group(1)
+            rename_map[col] = f"level_{level}_completion"
+            continue
         # Common alt headers
         if lc in ['adspend', 'ad_spend']:
             rename_map[col] = 'cost'

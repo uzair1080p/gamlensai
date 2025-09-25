@@ -131,11 +131,12 @@ def show_datasets_tab():
     
     # Template download + guide (restored)
     st.subheader("📋 Data Template")
-    # Prefer v2 template if present (cleaned rows/line-endings); fallback to v1
+    # Prefer v3 template (includes retention & level progression); fallback to v2, then v1
+    tpl_csv_v3 = "Data_Template_GameLens_AI_v3.csv"
     tpl_csv_v2 = "Data_Template_GameLens_AI_v2.csv"
     tpl_csv_v1 = "Data_Template_GameLens_AI.csv"
-    tpl_csv = tpl_csv_v2 if os.path.exists(tpl_csv_v2) else tpl_csv_v1
-    tpl_md = "DATA_TEMPLATE_GUIDE.md"
+    tpl_csv = tpl_csv_v3 if os.path.exists(tpl_csv_v3) else (tpl_csv_v2 if os.path.exists(tpl_csv_v2) else tpl_csv_v1)
+    tpl_md = "DATA_TEMPLATE_GUIDE_v3.md"
     col_tpl1, col_tpl2, col_tpl3 = st.columns([1,1,2])
     with col_tpl1:
         if os.path.exists(tpl_csv):
