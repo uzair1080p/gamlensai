@@ -136,7 +136,7 @@ def show_datasets_tab():
     tpl_csv_v2 = "Data_Template_GameLens_AI_v2.csv"
     tpl_csv_v1 = "Data_Template_GameLens_AI.csv"
     tpl_csv = tpl_csv_v3 if os.path.exists(tpl_csv_v3) else (tpl_csv_v2 if os.path.exists(tpl_csv_v2) else tpl_csv_v1)
-    tpl_md = "DATA_TEMPLATE_GUIDE_v3.md"
+    tpl_md = "DATA_TEMPLATE_GUIDE.md"
     col_tpl1, col_tpl2, col_tpl3 = st.columns([1,1,2])
     with col_tpl1:
         if os.path.exists(tpl_csv):

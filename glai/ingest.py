@@ -247,17 +247,17 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
             day = m.group(1)
             rename_map[col] = f"roas_d{day}"
             continue
-        # RETENTION_Dxx -> retention_dxx
+        # RETENTION_RATE_Dxx -> retention_rate_dxx
         m2 = _re.match(r"^retention(?:_rate)?[_\s]*d\s*(\d+)$", lc, flags=_re.IGNORECASE)
         if m2:
             day = m2.group(1)
-            rename_map[col] = f"retention_d{day}"
+            rename_map[col] = f"retention_rate_d{day}"
             continue
-        # LEVEL_X_COMPLETION -> level_x_completion
-        m3 = _re.match(r"^level[_\s]*(\d+)[_\s]*completion", lc, flags=_re.IGNORECASE)
+        # LEVEL_X_EVENTS -> level_x_events
+        m3 = _re.match(r"^level[_\s]*(\d+)[_\s]*events", lc, flags=_re.IGNORECASE)
         if m3:
             level = m3.group(1)
-            rename_map[col] = f"level_{level}_completion"
+            rename_map[col] = f"level_{level}_events"
             continue
         # Common alt headers
         if lc in ['adspend', 'ad_spend']:
