@@ -3,3 +3,4 @@ gpt_logs/
 *.xlsx
 *.xls
 *.pdf
+*.backup
