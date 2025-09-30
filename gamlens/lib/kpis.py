@@ -1,0 +1,35 @@
+import numpy as np
+import pandas as pd
+from .schema import ROAS_COLS
+
+def add_core_kpis(df: pd.DataFrame):
+    """Add CPI/ARPU/ROAS/ROI day and build the summary table."""
+    out = df.copy()
+
+    out["CPI ($)"]  = (out["cost"] / out["installs"].replace(0, np.nan)).round(2)
+    out["ARPU ($)"] = (out["revenue"] / out["installs"].replace(0, np.nan)).round(2)
+    out["ROAS"]     = (out["revenue"] / out["cost"].replace(0, np.nan)).round(2)
+
+    def roi_day(row):
+        for c in ROAS_COLS:
+            v = row.get(c)
+            if pd.notnull(v) and v >= 1:
+                return c.replace("roas_d", "D")
+        return None
+
+    out["ROI 100% By (Day)"] = out.apply(roi_day, axis=1)
+    out["Retention D7 (%)"]  = (out["retention_rate_d7"] * 100).round(2)
+
+    # Friendly campaign label
+    out["Campaign"] = out[["game","channel","platform","country","date"]].astype(str).agg(" | ".join, axis=1)
+
+    table = out[[
+        "Campaign","CPI ($)","installs","roas_d7","roas_d14","ROI 100% By (Day)",
+        "Retention D7 (%)","ARPU ($)","ROAS"
+    ]].rename(columns={
+        "installs":"Installs",
+        "roas_d7":"ROAS D7 (%)",
+        "roas_d14":"ROAS D14 (%)"
+    })
+
+    return out, table

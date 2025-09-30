@@ -1,0 +1,9 @@
+# Logs & junk
+gpt_logs/
+*.docx
+*.xlsx
+*.xls
+*.pdf
+__pycache__/
+.env
+.venv
