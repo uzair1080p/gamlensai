@@ -19,17 +19,19 @@ def add_core_kpis(df: pd.DataFrame):
 
     out["ROI 100% By (Day)"] = out.apply(roi_day, axis=1)
     out["Retention D7 (%)"]  = (out["retention_rate_d7"] * 100).round(2)
+    
+    # Convert ROAS columns to percentages for display
+    out["ROAS D7 (%)"] = (out["roas_d7"] * 100).round(2)
+    out["ROAS D14 (%)"] = (out["roas_d14"] * 100).round(2)
 
     # Friendly campaign label
     out["Campaign"] = out[["game","channel","platform","country","date"]].astype(str).agg(" | ".join, axis=1)
 
     table = out[[
-        "Campaign","CPI ($)","installs","roas_d7","roas_d14","ROI 100% By (Day)",
+        "Campaign","CPI ($)","installs","ROAS D7 (%)","ROAS D14 (%)","ROI 100% By (Day)",
         "Retention D7 (%)","ARPU ($)","ROAS"
     ]].rename(columns={
-        "installs":"Installs",
-        "roas_d7":"ROAS D7 (%)",
-        "roas_d14":"ROAS D14 (%)"
+        "installs":"Installs"
     })
 
     return out, table
