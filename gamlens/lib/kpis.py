@@ -8,6 +8,17 @@ def add_core_kpis(df: pd.DataFrame):
     
     # Calculate total revenue (in-app purchases + ad revenue)
     out["total_revenue"] = out["revenue"].fillna(0) + out["ad_revenue"].fillna(0)
+    
+    # Normalize ROAS columns: if values are > 1, assume they're percentages and divide by 100
+    # This handles both decimal format (0.50) and percentage format (50)
+    for col in ROAS_COLS:
+        if col in out.columns:
+            # Convert to numeric, coercing errors to NaN
+            out[col] = pd.to_numeric(out[col], errors='coerce')
+            # If max value is > 1, assume it's in percentage format (50 instead of 0.50)
+            max_val = out[col].max()
+            if pd.notnull(max_val) and max_val > 1:
+                out[col] = out[col] / 100
 
     out["CPI ($)"]  = (out["cost"] / out["installs"].replace(0, np.nan)).round(2)
     out["ARPU ($)"] = (out["total_revenue"] / out["installs"].replace(0, np.nan)).round(2)
