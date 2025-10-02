@@ -212,44 +212,96 @@ def show_predictions_tab():
     """Show predictions tab with gamlens integration"""
     st.header("🔮 Predictions & AI Recommendations")
     
-    if 'selected_dataset' not in st.session_state or not st.session_state.selected_dataset:
-        st.warning("Please select a dataset first.")
+    # Dataset selection dropdown
+    st.subheader("📁 Select Dataset")
+    
+    # Get available datasets from both gamlens data directory and database
+    gamlens_files = []
+    if os.path.exists(DATA_DIR):
+        gamlens_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
+    
+    # Get datasets from database
+    db_datasets = []
+    try:
+        from glai.db import get_db_session
+        from glai.models import Dataset
+        db = get_db_session()
+        db_datasets = [ds.canonical_name for ds in db.query(Dataset).filter(Dataset.ingest_completed_at.isnot(None)).all()]
+        db.close()
+    except:
+        pass
+    
+    # Combine and deduplicate
+    all_datasets = list(set(gamlens_files + db_datasets))
+    
+    if not all_datasets:
+        st.warning("No datasets found. Please upload a dataset first in the Dataset Management tab.")
         return
     
-    selected_dataset = st.session_state.selected_dataset
+    # Dataset selection
+    selected_dataset_name = st.selectbox(
+        "Choose a dataset:",
+        all_datasets,
+        index=0,
+        help="Select the dataset you want to analyze"
+    )
+    
+    if not selected_dataset_name:
+        st.warning("Please select a dataset.")
+        return
     
     # Load dataset data using gamlens
     try:
-        # Try to load from gamlens data directory first
-        gamlens_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
         dataset_loaded = False
+        df_kpi = None
+        table = None
         
-        for file in gamlens_files:
+        # Try to load from gamlens data directory first
+        if selected_dataset_name in gamlens_files:
             try:
-                path = os.path.join(DATA_DIR, file)
+                path = os.path.join(DATA_DIR, selected_dataset_name)
                 df = read_csv_strict(path)
                 df_kpi, table = add_core_kpis(df)
-                
-                st.success(f"✅ Loaded dataset: {file}")
+                st.success(f"✅ Loaded dataset: {selected_dataset_name}")
                 dataset_loaded = True
-                break
             except Exception as e:
-                continue
+                st.error(f"Error loading from gamlens directory: {str(e)}")
         
         if not dataset_loaded:
-            # Fallback to existing dataset loading
-            df = load_dataset_data(selected_dataset)
-            if df is not None:
-                df_kpi, table = add_core_kpis(df)
-                st.success("✅ Loaded dataset from database")
-            else:
-                st.error("❌ Could not load dataset data")
+            # Fallback to existing dataset loading from database
+            try:
+                # Find the dataset in the database by name
+                from glai.db import get_db_session
+                from glai.models import Dataset
+                db = get_db_session()
+                db_dataset = db.query(Dataset).filter(
+                    Dataset.canonical_name == selected_dataset_name,
+                    Dataset.ingest_completed_at.isnot(None)
+                ).first()
+                
+                if db_dataset and db_dataset.storage_path and os.path.exists(db_dataset.storage_path):
+                    # Load from parquet file
+                    import pandas as pd
+                    df = pd.read_parquet(db_dataset.storage_path)
+                    df_kpi, table = add_core_kpis(df)
+                    st.success(f"✅ Loaded dataset from database: {selected_dataset_name}")
+                    dataset_loaded = True
+                else:
+                    st.error(f"❌ Dataset '{selected_dataset_name}' not found in database or file missing")
+                    return
+                db.close()
+            except Exception as e:
+                st.error(f"Error loading from database: {str(e)}")
                 return
-        else:
+        
+        if dataset_loaded:
             # Store in session state
             st.session_state.df_kpi = df_kpi
             st.session_state.table = table
-            st.session_state.ds_name = file
+            st.session_state.ds_name = selected_dataset_name
+        else:
+            st.error("❌ Could not load dataset data from any source")
+            return
     
     except Exception as e:
         st.error(f"Error loading dataset: {str(e)}")
