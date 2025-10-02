@@ -351,7 +351,7 @@ def show_predictions_tab():
         total_cost = df_kpi["cost"].sum()
         st.metric("Total Cost", f"${total_cost:,.2f}")
     with col2:
-        total_revenue = df_kpi["revenue"].sum()
+        total_revenue = df_kpi["total_revenue"].sum()
         st.metric("Total Revenue", f"${total_revenue:,.2f}")
     with col3:
         total_installs = df_kpi["installs"].sum()

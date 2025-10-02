@@ -5,10 +5,13 @@ from .schema import ROAS_COLS
 def add_core_kpis(df: pd.DataFrame):
     """Add CPI/ARPU/ROAS/ROI day and build the summary table."""
     out = df.copy()
+    
+    # Calculate total revenue (in-app purchases + ad revenue)
+    out["total_revenue"] = out["revenue"].fillna(0) + out["ad_revenue"].fillna(0)
 
     out["CPI ($)"]  = (out["cost"] / out["installs"].replace(0, np.nan)).round(2)
-    out["ARPU ($)"] = (out["revenue"] / out["installs"].replace(0, np.nan)).round(2)
-    out["ROAS"]     = (out["revenue"] / out["cost"].replace(0, np.nan)).round(2)
+    out["ARPU ($)"] = (out["total_revenue"] / out["installs"].replace(0, np.nan)).round(2)
+    out["ROAS"]     = (out["total_revenue"] / out["cost"].replace(0, np.nan)).round(2)
 
     def roi_day(row):
         for c in ROAS_COLS:
