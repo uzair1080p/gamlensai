@@ -234,16 +234,35 @@ def show_predictions_tab():
     # Combine and deduplicate
     all_datasets = list(set(gamlens_files + db_datasets))
     
-    if not all_datasets:
+    # Filter out datasets that are known to be incompatible
+    compatible_datasets = []
+    for dataset_name in all_datasets:
+        # Skip datasets with "unknown" in the name as they're likely from old ingestion
+        if "unknown" in dataset_name.lower() and dataset_name not in gamlens_files:
+            continue
+        compatible_datasets.append(dataset_name)
+    
+    # If no compatible datasets, show all with a warning
+    if not compatible_datasets:
+        compatible_datasets = all_datasets
+        if all_datasets:
+            st.warning("⚠️ Some datasets may have compatibility issues. Try selecting a CSV file from the gamlens directory.")
+    
+    if not compatible_datasets:
         st.warning("No datasets found. Please upload a dataset first in the Dataset Management tab.")
         return
     
-    # Dataset selection
+    # Dataset selection with session state to prevent reset
+    session_key = f"selected_dataset_predictions"
+    if session_key not in st.session_state:
+        st.session_state[session_key] = compatible_datasets[0] if compatible_datasets else None
+    
     selected_dataset_name = st.selectbox(
         "Choose a dataset:",
-        all_datasets,
-        index=0,
-        help="Select the dataset you want to analyze"
+        compatible_datasets,
+        index=compatible_datasets.index(st.session_state[session_key]) if st.session_state[session_key] in compatible_datasets else 0,
+        help="Select the dataset you want to analyze",
+        key=session_key
     )
     
     if not selected_dataset_name:
@@ -283,9 +302,27 @@ def show_predictions_tab():
                     # Load from parquet file
                     import pandas as pd
                     df = pd.read_parquet(db_dataset.storage_path)
-                    df_kpi, table = add_core_kpis(df)
-                    st.success(f"✅ Loaded dataset from database: {selected_dataset_name}")
-                    dataset_loaded = True
+                    
+                    # Check if the dataset has the required columns for add_core_kpis
+                    required_columns = ['game', 'channel', 'platform', 'country', 'date', 'installs', 'cost', 'revenue']
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    
+                    if missing_columns:
+                        st.warning(f"⚠️ Dataset '{selected_dataset_name}' is missing required columns: {missing_columns}")
+                        st.info("This dataset was likely ingested with an older schema. Please re-upload it with the correct template.")
+                        db.close()
+                        return
+                    
+                    # Try to add KPIs
+                    try:
+                        df_kpi, table = add_core_kpis(df)
+                        st.success(f"✅ Loaded dataset from database: {selected_dataset_name}")
+                        dataset_loaded = True
+                    except Exception as kpi_error:
+                        st.error(f"❌ Error processing dataset KPIs: {str(kpi_error)}")
+                        st.info("The dataset structure may be incompatible with the current schema.")
+                        db.close()
+                        return
                 else:
                     st.error(f"❌ Dataset '{selected_dataset_name}' not found in database or file missing")
                     return
