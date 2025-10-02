@@ -412,7 +412,7 @@ def show_predictions_tab():
         
         try:
             # Build payload for AI
-            dataset_name = st.session_state.get('ds_name', selected_dataset.canonical_name)
+            dataset_name = st.session_state.get('ds_name', selected_dataset_name)
             payload = build_payload_for_ai(df_kpi, dataset_name)
             
             # Get AI response
