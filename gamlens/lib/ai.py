@@ -51,6 +51,12 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
         "schema_version": "v2",
         "dataset_name": dataset_name,
         "granularity": "campaign-day",
+        "data_format": {
+            "roas_columns": "All ROAS values (roas_d0, roas_d1, roas_d3, roas_d7, roas_d14, roas_d30, roas_d60, roas_d90) are in DECIMAL format where 1.0 = 100% ROI. Example: 0.4 = 40% ROAS, 0.5 = 50% ROAS, 1.0 = 100% ROAS",
+            "retention_columns": "All retention values (retention_rate_d1, retention_rate_d2, etc.) are in DECIMAL format where 1.0 = 100% retention. Example: 0.19 = 19% retention",
+            "currency_columns": "All monetary values (cost, revenue, ad_revenue, total_revenue, CPI, ARPU) are in dollars ($)",
+            "percentage_display": "When displaying percentages, multiply decimal values by 100. Example: 0.4 ROAS = 40% ROAS"
+        },
         "columns": keep,
         "rows_count": int(len(slim)),
         "all_campaigns": all_data,  # Full data with all ROAS columns for trend analysis
@@ -77,15 +83,18 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
 
     system = (
         "You are a UA & games analytics copilot specializing in mobile game campaign performance and ROAS forecasting. "
-        "The data payload contains detailed campaign metrics including ROAS progression across multiple days "
-        "(roas_d0, roas_d1, roas_d3, roas_d7, roas_d14, roas_d30, roas_d60, roas_d90). "
-        "When asked about ROAS projections or when 100% ROI will be achieved: "
-        "1) Analyze the ROAS trend across available days to identify growth patterns "
-        "2) Calculate growth rates and project future ROAS values "
-        "3) Estimate when ROAS will reach 1.0 (100% ROI) based on the trend "
-        "4) Provide specific day estimates (e.g., D45, D60) with supporting calculations "
-        "5) State assumptions and confidence levels clearly. "
-        "Use only the provided data. Be analytical, numeric, and actionable."
+        "CRITICAL: All ROAS values in the data are in DECIMAL format where 1.0 = 100% ROI. "
+        "Example: roas_d7 = 0.5 means 50% ROAS, roas_d14 = 1.0 means 100% ROAS. "
+        "When analyzing ROAS trends and making projections: "
+        "1) Use the exact decimal values from the data (0.4, 0.5, etc.) for calculations "
+        "2) When displaying results, convert to percentages (0.4 = 40%, 0.5 = 50%) "
+        "3) For 100% ROI projections, calculate when ROAS will reach 1.0 (not 100) "
+        "4) Analyze ROAS progression: roas_d0 → roas_d1 → roas_d3 → roas_d7 → roas_d14 → roas_d30 "
+        "5) Calculate consistent growth rates using decimal values "
+        "6) Project when ROAS will reach 1.0 based on the trend "
+        "7) Provide specific day estimates with mathematical calculations "
+        "8) Always state your assumptions and show your work. "
+        "Be mathematically consistent and precise. Use only the provided data."
     )
     messages = [
         {"role": "system", "content": system},
@@ -93,5 +102,5 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
         {"role": "user", "content": json.dumps(payload, default=str)},  # guard
         {"role": "user", "content": f"QUESTION: {question}"}
     ]
-    r = client.chat.completions.create(model=model, messages=messages, temperature=0.2)
+    r = client.chat.completions.create(model=model, messages=messages, temperature=0.1)
     return r.choices[0].message.content
