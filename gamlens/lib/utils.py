@@ -62,6 +62,9 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
         .str.replace(" ", "_", regex=False)
     )
 
+    # Drop rows that are entirely empty (common in spreadsheet exports)
+    df.dropna(how="all", inplace=True)
+
     # Fix common header typo(s)
     if "vel_25_events" in df.columns and "level_25_events" not in df.columns:
         df.rename(columns={"vel_25_events": "level_25_events"}, inplace=True)
@@ -79,16 +82,26 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
     # Keep only expected columns in correct order
     df = df[TEMPLATE_COLS].copy()
 
-    # Types: force dimension columns to string explicitly
-    df["game"] = df["game"].astype(str).str.strip()
-    df["channel"] = df["channel"].astype(str).str.strip()
-    df["platform"] = df["platform"].astype(str).str.strip()
-    df["country"] = df["country"].astype(str).str.strip()
+    # Sanitize dimension columns; replace obvious placeholders/zeros with NaN then strip
+    for dim in ["game", "channel", "platform", "country"]:
+        df[dim] = (
+            df[dim]
+            .astype(str)
+            .replace({"0": None, "nan": None})
+            .str.strip()
+        )
+
+    # Drop rows where all key fields are empty (typical trailing blanks)
+    df.dropna(subset=["game", "channel", "platform", "country", "date"], how="all", inplace=True)
 
     # Parse date and numerics
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     for c in NUM_COLS:
         df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Drop rows that have no date and no numeric signal (fully blank after typing)
+    numeric_subset = [c for c in NUM_COLS if c in df.columns]
+    df = df[~(df["date"].isna() & df[numeric_subset].isna().all(axis=1))]
 
     return df
 
