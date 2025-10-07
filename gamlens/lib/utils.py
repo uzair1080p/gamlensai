@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from pandas import NA
 from .schema import TEMPLATE_COLS, NUM_COLS
 from io import BytesIO, StringIO
 
@@ -9,15 +10,25 @@ DATA_DIR = "data"
 def ensure_dirs():
     os.makedirs(DATA_DIR, exist_ok=True)
 
-def read_csv_strict(path_or_buffer) -> pd.DataFrame:
-    """Read CSV/TSV robustly and enforce the strict data template schema.
+TEXT_COLS = ["game", "channel", "platform", "country"]
 
-    - Works with file paths, bytes-like buffers (e.g., Streamlit uploads), or file objects
-    - Auto-detect delimiter (comma or tab)
-    - Try multiple encodings by decoding to text per attempt
-    - Normalizes headers and fixes common typos
-    - Enforces template order and numeric types
-    """
+def _is_nan_like(x):
+    import math
+    try:
+        return x is None or (isinstance(x, float) and math.isnan(x))
+    except Exception:
+        return False
+
+def _clean_text_val(x):
+    if _is_nan_like(x):
+        return NA
+    s = str(x).strip()
+    if s == "" or s.lower() in {"0", "nan", "none", "null"}:
+        return NA
+    return s
+
+def read_csv_strict(path_or_buffer) -> pd.DataFrame:
+    """Read CSV robustly and enforce the strict data template schema."""
     # Grab raw bytes once if a file-like object was provided
     raw_bytes = None
     if hasattr(path_or_buffer, "read") and not isinstance(path_or_buffer, (str, bytes)):
@@ -82,14 +93,15 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
     # Keep only expected columns in correct order
     df = df[TEMPLATE_COLS].copy()
 
-    # Sanitize dimension columns; replace obvious placeholders/zeros with NaN then strip
-    for dim in ["game", "channel", "platform", "country"]:
-        df[dim] = (
-            df[dim]
-            .astype(str)
-            .replace({"0": None, "nan": None})
-            .str.strip()
-        )
+    # --- New text sanitation: make non-numeric columns pure nullable strings ---
+    for dim in TEXT_COLS:
+        if dim in df.columns:
+            df[dim] = df[dim].map(_clean_text_val).astype("string")
+
+    numeric_set = set(NUM_COLS) | {"date"}
+    for col in df.columns:
+        if col not in numeric_set:
+            df[col] = df[col].map(_clean_text_val).astype("string")
 
     # Drop rows where all key fields are empty (typical trailing blanks)
     df.dropna(subset=["game", "channel", "platform", "country", "date"], how="all", inplace=True)
