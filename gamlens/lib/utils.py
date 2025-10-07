@@ -58,6 +58,7 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
             else:
                 # Path on disk
                 df = pd.read_csv(path_or_buffer, sep=None, engine="python", encoding=enc, dtype=str)
+            print(f"[CSV DEBUG] Read using encoding={enc}, shape={getattr(df, 'shape', None)}")
             break
         except Exception as e:
             last_err = e
@@ -72,6 +73,7 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
         .str.lower()
         .str.replace(" ", "_", regex=False)
     )
+    print(f"[CSV DEBUG] Normalized headers: {list(df.columns)}")
 
     # Drop rows that are entirely empty (common in spreadsheet exports)
     df.dropna(how="all", inplace=True)
@@ -92,11 +94,17 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
 
     # Keep only expected columns in correct order
     df = df[TEMPLATE_COLS].copy()
+    try:
+        samples = {c: df[c].head(3).tolist() for c in TEXT_COLS if c in df.columns}
+        print(f"[CSV DEBUG] Raw text samples (first 3): {samples}")
+    except Exception as e:
+        print(f"[CSV DEBUG] Sampling text columns failed: {e}")
 
     # --- New text sanitation: make non-numeric columns pure nullable strings ---
     for dim in TEXT_COLS:
         if dim in df.columns:
             df[dim] = df[dim].map(_clean_text_val).astype("string")
+    print(f"[CSV DEBUG] Text dtypes: {{c: str(df[c].dtype) for c in TEXT_COLS if c in df.columns}}")
 
     numeric_set = set(NUM_COLS) | {"date"}
     for col in df.columns:
@@ -110,10 +118,12 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     for c in NUM_COLS:
         df[c] = pd.to_numeric(df[c], errors="coerce")
+    print(f"[CSV DEBUG] Numeric non-null counts: {{c: int(df[c].notna().sum()) for c in NUM_COLS if c in df.columns}}")
 
     # Drop rows that have no date and no numeric signal (fully blank after typing)
     numeric_subset = [c for c in NUM_COLS if c in df.columns]
     df = df[~(df["date"].isna() & df[numeric_subset].isna().all(axis=1))]
+    print(f"[CSV DEBUG] Final shape: {df.shape}")
 
     return df
 
