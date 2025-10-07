@@ -265,6 +265,29 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
     if rename_map:
         df_normalized = df_normalized.rename(columns=rename_map)
 
+    # ---------------- Header normalization + text coercion + DEBUG ----------------
+    print("[CSV DEBUG] Ingest: columns before normalize:", list(df_normalized.columns))
+
+    # Normalize header whitespace/case
+    df_normalized.columns = (
+        df_normalized.columns.astype(str).str.strip().str.lower().str.replace(' ', '_', regex=False)
+    )
+    # Fix common typos
+    if 'vel_25_events' in df_normalized.columns and 'level_25_events' not in df_normalized.columns:
+        df_normalized = df_normalized.rename(columns={'vel_25_events': 'level_25_events'})
+
+    # Coerce dimension text columns to nullable strings and clean NA-like values
+    TEXT_COLS = ['game', 'channel', 'platform', 'country']
+    def _clean_text_val(v):
+        s = str(v).strip()
+        if s == '' or s.lower() in {'0','nan','none','null'}:
+            return pd.NA
+        return s
+    for c in TEXT_COLS:
+        if c in df_normalized.columns:
+            df_normalized[c] = df_normalized[c].map(_clean_text_val).astype('string')
+    print("[CSV DEBUG] Ingest: text dtypes:", {c: str(df_normalized[c].dtype) for c in TEXT_COLS if c in df_normalized.columns})
+
     # Ensure required columns exist
     required_columns = ['date', 'installs', 'cost', 'revenue']
     for col in required_columns:
@@ -273,7 +296,10 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
     
     # Normalize data types
     if 'date' in df_normalized.columns:
-        df_normalized['date'] = pd.to_datetime(df_normalized['date'], errors='coerce')
+        try:
+            df_normalized['date'] = pd.to_datetime(df_normalized['date'], errors='coerce')
+        except Exception as e:
+            print("[CSV DEBUG] Ingest: date parse failed:", e)
     
     # Smart currency cleaning - detect and extract numeric values from currency strings
     def clean_currency_value(value):
@@ -325,12 +351,20 @@ def normalize_columns(df: pd.DataFrame, platform: PlatformEnum) -> pd.DataFrame:
     # Convert truly numeric columns
     for col in numeric_columns + roas_columns + retention_columns:
         if col in df_normalized.columns:
-            df_normalized[col] = pd.to_numeric(df_normalized[col], errors='coerce')
+            try:
+                df_normalized[col] = pd.to_numeric(df_normalized[col], errors='coerce')
+            except Exception as e:
+                print(f"[CSV DEBUG] Ingest: numeric parse failed for {col}:", e)
     
     # Clean currency columns - extract numeric values from currency strings
     for col in currency_columns:
         if col in df_normalized.columns:
-            df_normalized[col] = df_normalized[col].apply(clean_currency_value)
+            try:
+                df_normalized[col] = df_normalized[col].apply(clean_currency_value)
+            except Exception as e:
+                print(f"[CSV DEBUG] Ingest: currency clean failed for {col}:", e)
+
+    print("[CSV DEBUG] Ingest: final shape:", df_normalized.shape)
     
     # Keep currency columns as strings for GPT to parse - don't normalize here
     # The GPT recommendation system will handle parsing currency strings
