@@ -28,7 +28,11 @@ def _clean_text_val(x):
     return s
 
 def read_csv_strict(path_or_buffer) -> pd.DataFrame:
-    """Read CSV robustly and enforce the strict data template schema."""
+    """Read CSV robustly and enforce the strict data template schema.
+
+    If the vectorized parser fails, a fallback line-by-line parser is used to
+    detect and report the exact faulty line(s).
+    """
     # Grab raw bytes once if a file-like object was provided
     raw_bytes = None
     if hasattr(path_or_buffer, "read") and not isinstance(path_or_buffer, (str, bytes)):
@@ -64,7 +68,13 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
             last_err = e
             df = None
     if df is None:
-        raise ValueError(f"Failed to read file with common encodings: {last_err}")
+        # Fallback: line-by-line diagnostics
+        # Acquire text for detailed parsing
+        if raw_bytes is None:
+            with open(path_or_buffer, "rb") as f:
+                raw_bytes = f.read()
+        text = raw_bytes.decode("utf-8", errors="replace")
+        return _read_csv_line_by_line_with_diagnostics(text)
 
     # Normalize headers
     df.columns = (
@@ -129,3 +139,101 @@ def read_csv_strict(path_or_buffer) -> pd.DataFrame:
 
 def coalesce_zero(series: pd.Series):
     return series.replace([0, np.inf, -np.inf], np.nan)
+
+# -------------------- Fallback diagnostic parser --------------------
+def _read_csv_line_by_line_with_diagnostics(text: str) -> pd.DataFrame:
+    """Fallback CSV parser that scans line-by-line and reports faulty rows.
+
+    Returns a cleaned DataFrame when possible; raises ValueError with a
+    detailed report if structural errors are found.
+    """
+    import csv
+    from datetime import datetime
+
+    lines = text.splitlines()
+    if not lines:
+        raise ValueError("Empty file")
+
+    # Detect delimiter
+    header_raw = lines[0]
+    delimiter = "\t" if "\t" in header_raw and header_raw.count("\t") >= header_raw.count(",") else ","
+
+    reader = csv.reader(lines, delimiter=delimiter)
+    header = next(reader)
+    norm_header = [str(h).strip().lower().replace(" ", "_") for h in header]
+
+    # Typo fix
+    norm_header = ["level_25_events" if h == "vel_25_events" else h for h in norm_header]
+
+    # Map to template names
+    template_map = {c.lower(): c for c in TEMPLATE_COLS}
+    mapped_header = [template_map.get(h, h) for h in norm_header]
+
+    missing = [c for c in TEMPLATE_COLS if c not in mapped_header]
+    if missing:
+        raise ValueError(f"Header missing required columns: {missing}. Parsed header={mapped_header}")
+
+    # Build index map for required columns
+    name_to_idx = {name: mapped_header.index(name) for name in mapped_header}
+
+    records = []
+    errors = []
+    for i, row in enumerate(reader, start=2):  # human 1-based; +1 for header
+        # Pad/trim row length
+        if len(row) != len(mapped_header):
+            errors.append((i, "column_mismatch", f"expected {len(mapped_header)} cols, got {len(row)}", row[:10]))
+            continue
+
+        rec = {}
+        for name in mapped_header:
+            rec[name] = row[name_to_idx[name]]
+
+        # Clean text cols
+        for dim in TEXT_COLS:
+            if dim in rec:
+                rec[dim] = _clean_text_val(rec[dim])
+
+        # Parse date
+        try:
+            rec["date"] = pd.to_datetime(rec.get("date"), errors="coerce")
+        except Exception:
+            rec["date"] = pd.NaT
+
+        # Numerics
+        for c in NUM_COLS:
+            if c in rec:
+                try:
+                    rec[c] = pd.to_numeric(rec[c], errors="coerce")
+                except Exception:
+                    rec[c] = np.nan
+
+        # If completely empty row, skip
+        if pd.isna(rec.get("date")) and all(pd.isna(rec.get(c)) for c in NUM_COLS):
+            # skip
+            continue
+
+        # Flag missing key dims
+        if all(pd.isna(rec.get(k)) for k in ["game", "channel", "platform", "country"]):
+            errors.append((i, "missing_dimensions", "all dims empty", {k: rec.get(k) for k in TEXT_COLS}))
+            continue
+
+        records.append(rec)
+
+    if errors:
+        # Report first few errors to help user fix quickly
+        sample = "\n".join([f"line {ln}: {code} - {detail}" for ln, code, detail, *_ in errors[:5]])
+        raise ValueError(f"CSV validation failed. First issues:\n{sample}\nTotal errors: {len(errors)}")
+
+    if not records:
+        raise ValueError("No valid data rows found after parsing.")
+
+    df = pd.DataFrame.from_records(records)
+    # Ensure all required columns exist
+    for c in TEMPLATE_COLS:
+        if c not in df.columns:
+            df[c] = pd.NA
+    df = df[TEMPLATE_COLS]
+    # Set dtypes comparable to main path
+    for dim in TEXT_COLS:
+        df[dim] = df[dim].astype("string")
+    return df
