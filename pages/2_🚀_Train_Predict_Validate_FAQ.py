@@ -365,8 +365,20 @@ def show_predictions_tab():
                 
                 df = pd.DataFrame(data_dicts)
                 
-                # Convert text columns to numeric where needed (based on DDL)
-                for col in ['roas_d14', 'roas_d30', 'roas_d60', 'roas_d90', 
+                # Convert text columns to appropriate data types
+                # Convert date column
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+                
+                # Convert integer columns
+                for col in ['installs', 'cost']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')  # Nullable integer
+                
+                # Convert float columns
+                for col in ['ad_revenue', 'revenue', 'roas_d0', 'roas_d1', 'roas_d3', 'roas_d7', 
+                           'roas_d14', 'roas_d30', 'roas_d60', 'roas_d90',
+                           'retention_rate_d1', 'retention_rate_d2', 'retention_rate_d3', 
                            'retention_rate_d7', 'retention_rate_d14', 'retention_rate_d30',
                            'level_1_events', 'level_5_events', 'level_10_events', 
                            'level_15_events', 'level_20_events', 'level_25_events',
