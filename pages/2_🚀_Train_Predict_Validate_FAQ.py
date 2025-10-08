@@ -31,6 +31,7 @@ from glai.naming import make_canonical_name
 from glai.faq_gpt import get_faq_gpt
 from glai.recommend_gpt import get_gpt_recommendations
 from glai.raw_source_loader import load_raw_source_dataframe, load_cleaned_dataframe
+from glai.ai_helpers import build_payload_for_ai, ask_one_question, add_core_kpis
 
 
 def load_raw_csv_data(dataset):
@@ -586,13 +587,8 @@ def show_predictions_tab():
         st.info("Please ensure the database credentials are correct in .env file")
         return
     
-    # Fallback: also check gamlens files if no PostgreSQL data
-    gamlens_files = []
-    if not pg_datasets and os.path.exists(DATA_DIR):
-        gamlens_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
-    
     # Use PostgreSQL datasets as primary source
-    all_datasets = pg_datasets if pg_datasets else gamlens_files
+    all_datasets = pg_datasets
     
     if not all_datasets:
         st.warning("No datasets found. Please upload a CSV file using the n8n webhook or the Dataset Management tab.")
@@ -694,16 +690,9 @@ def show_predictions_tab():
             except Exception as e:
                 st.error(f"Error loading from PostgreSQL: {str(e)}")
         
-        # Fallback to gamlens files if PostgreSQL fails
-        if not dataset_loaded and selected_dataset_name in gamlens_files:
-            try:
-                path = os.path.join(DATA_DIR, selected_dataset_name)
-                df = read_csv_strict(path)
-                df_kpi, table = add_core_kpis(df)
-                st.success(f"✅ Loaded dataset from gamlens directory: {selected_dataset_name}")
-                dataset_loaded = True
-            except Exception as e:
-                st.error(f"Error loading from gamlens directory: {str(e)}")
+        # Fallback: If PostgreSQL fails, show error (no local CSV support in this version)
+        if not dataset_loaded:
+            st.error("❌ Failed to load dataset from PostgreSQL. Please ensure data is uploaded via n8n webhook.")
         
         if dataset_loaded:
             # Store in session state
