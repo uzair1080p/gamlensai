@@ -267,48 +267,30 @@ def show_training_tab():
     st.write("- Integration with the new AI recommendation system")
 
 def show_predictions_tab():
-    """Show predictions tab with gamlens integration"""
+    """Show predictions tab with PostgreSQL integration"""
     st.header("🔮 Predictions & AI Recommendations")
     
     # Dataset selection dropdown
     st.subheader("📁 Select Dataset")
     
-    # Get available datasets from both gamlens data directory and database
-    gamlens_files = []
-    if os.path.exists(DATA_DIR):
-        gamlens_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
-    
-    # Get datasets from database
-    db_datasets = []
+    # Get available datasets from PostgreSQL csv_uploads table
+    pg_datasets = []
     try:
-        from glai.db import get_db_session
-        from glai.models import Dataset
-        db = get_db_session()
-        db_datasets = [ds.canonical_name for ds in db.query(Dataset).filter(Dataset.ingest_completed_at.isnot(None)).all()]
-        db.close()
-    except:
-        pass
-    
-    # Combine and deduplicate
-    all_datasets = list(set(gamlens_files + db_datasets))
-    
-    # Filter out datasets that are known to be incompatible
-    compatible_datasets = []
-    for dataset_name in all_datasets:
-        # Skip datasets with "unknown" in the name as they're likely from old ingestion
-        if "unknown" in dataset_name.lower() and dataset_name not in gamlens_files:
-            continue
-        compatible_datasets.append(dataset_name)
-    
-    # If no compatible datasets, show all with a warning
-    if not compatible_datasets:
-        compatible_datasets = all_datasets
-        if all_datasets:
-            st.warning("⚠️ Some datasets may have compatibility issues. Try selecting a CSV file from the gamlens directory.")
-    
-    if not compatible_datasets:
-        st.warning("No datasets found. Please upload a dataset first in the Dataset Management tab.")
+        if POSTGRESQL_AVAILABLE:
+            pg_datasets = get_distinct_source_files()
+    except Exception as e:
+        st.error(f"Error connecting to PostgreSQL: {str(e)}")
+        st.info("Please ensure the database credentials are correct in .env file")
         return
+    
+    # Use PostgreSQL datasets as primary source
+    all_datasets = pg_datasets
+    
+    if not all_datasets:
+        st.warning("No datasets found. Please upload a CSV file using the n8n webhook or the Dataset Management tab.")
+        return
+    
+    compatible_datasets = all_datasets
     
     # Dataset selection with session state to prevent reset
     session_key = f"selected_dataset_predictions"
@@ -333,61 +315,76 @@ def show_predictions_tab():
         df_kpi = None
         table = None
         
-        # Try to load from gamlens data directory first
-        if selected_dataset_name in gamlens_files:
+        # Load from PostgreSQL csv_uploads table
+        if selected_dataset_name in pg_datasets:
             try:
-                path = os.path.join(DATA_DIR, selected_dataset_name)
-                df = read_csv_strict(path)
-                df_kpi, table = add_core_kpis(df)
-                st.success(f"✅ Loaded dataset: {selected_dataset_name}")
-                dataset_loaded = True
-            except Exception as e:
-                st.error(f"Error loading from gamlens directory: {str(e)}")
-        
-        if not dataset_loaded:
-            # Fallback to existing dataset loading from database
-            try:
-                # Find the dataset in the database by name
-                from glai.db import get_db_session
-                from glai.models import Dataset
-                db = get_db_session()
-                db_dataset = db.query(Dataset).filter(
-                    Dataset.canonical_name == selected_dataset_name,
-                    Dataset.ingest_completed_at.isnot(None)
-                ).first()
+                csv_uploads = get_data_by_source_file(selected_dataset_name)
                 
-                if db_dataset and db_dataset.storage_path and os.path.exists(db_dataset.storage_path):
-                    # Load from parquet file
-                    import pandas as pd
-                    df = pd.read_parquet(db_dataset.storage_path)
-                    
-                    # Check if the dataset has the required columns for add_core_kpis
-                    required_columns = ['game', 'channel', 'platform', 'country', 'date', 'installs', 'cost', 'revenue']
-                    missing_columns = [col for col in required_columns if col not in df.columns]
-                    
-                    if missing_columns:
-                        st.warning(f"⚠️ Dataset '{selected_dataset_name}' is missing required columns: {missing_columns}")
-                        st.info("This dataset was likely ingested with an older schema. Please re-upload it with the correct template.")
-                        db.close()
-                        return
-                    
-                    # Try to add KPIs
-                    try:
-                        df_kpi, table = add_core_kpis(df)
-                        st.success(f"✅ Loaded dataset from database: {selected_dataset_name}")
-                        dataset_loaded = True
-                    except Exception as kpi_error:
-                        st.error(f"❌ Error processing dataset KPIs: {str(kpi_error)}")
-                        st.info("The dataset structure may be incompatible with the current schema.")
-                        db.close()
-                        return
-                else:
-                    st.error(f"❌ Dataset '{selected_dataset_name}' not found in database or file missing")
+                if not csv_uploads:
+                    st.error(f"❌ No data found for dataset: {selected_dataset_name}")
                     return
-                db.close()
+                
+                # Convert to DataFrame
+                data_dicts = []
+                for upload in csv_uploads:
+                    row_dict = {
+                        'game': upload.game,
+                        'channel': upload.channel,
+                        'platform': upload.platform,
+                        'country': upload.country,
+                        'date': upload.date,
+                        'installs': upload.installs,
+                        'cost': upload.cost,
+                        'ad_revenue': upload.ad_revenue,
+                        'revenue': upload.revenue,
+                        'roas_d0': upload.roas_d0,
+                        'roas_d1': upload.roas_d1,
+                        'roas_d3': upload.roas_d3,
+                        'roas_d7': upload.roas_d7,
+                        'roas_d14': upload.roas_d14,
+                        'roas_d30': upload.roas_d30,
+                        'roas_d60': upload.roas_d60,
+                        'roas_d90': upload.roas_d90,
+                        'retention_rate_d1': upload.retention_rate_d1,
+                        'retention_rate_d2': upload.retention_rate_d2,
+                        'retention_rate_d3': upload.retention_rate_d3,
+                        'retention_rate_d7': upload.retention_rate_d7,
+                        'retention_rate_d14': upload.retention_rate_d14,
+                        'retention_rate_d30': upload.retention_rate_d30,
+                        'level_1_events': upload.level_1_events,
+                        'level_5_events': upload.level_5_events,
+                        'level_10_events': upload.level_10_events,
+                        'level_15_events': upload.level_15_events,
+                        'level_20_events': upload.level_20_events,
+                        'level_25_events': upload.level_25_events,
+                        'level_30_events': upload.level_30_events,
+                        'level_40_events': upload.level_40_events,
+                        'level_50_events': upload.level_50_events,
+                    }
+                    data_dicts.append(row_dict)
+                
+                df = pd.DataFrame(data_dicts)
+                
+                # Convert text columns to numeric where needed (based on DDL)
+                for col in ['roas_d14', 'roas_d30', 'roas_d60', 'roas_d90', 
+                           'retention_rate_d7', 'retention_rate_d14', 'retention_rate_d30',
+                           'level_1_events', 'level_5_events', 'level_10_events', 
+                           'level_15_events', 'level_20_events', 'level_25_events',
+                           'level_30_events', 'level_40_events', 'level_50_events']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                
+                # Add KPIs
+                df_kpi, table = add_core_kpis(df)
+                st.success(f"✅ Loaded dataset from PostgreSQL: {selected_dataset_name}")
+                dataset_loaded = True
+                
             except Exception as e:
-                st.error(f"Error loading from database: {str(e)}")
-                return
+                st.error(f"Error loading from PostgreSQL: {str(e)}")
+        
+        # Fallback: If PostgreSQL fails, show error (no local CSV support in this version)
+        if not dataset_loaded:
+            st.error("❌ Failed to load dataset from PostgreSQL. Please ensure data is uploaded via n8n webhook.")
         
         if dataset_loaded:
             # Store in session state
