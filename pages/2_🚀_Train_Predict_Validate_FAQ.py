@@ -42,6 +42,14 @@ from glai.models import Dataset, ModelVersion, PredictionRun, PlatformEnum
 from glai.ingest import ingest_file, get_datasets, get_dataset_by_id, load_dataset_data
 from glai.naming import make_canonical_name
 
+# Import PostgreSQL models for new integration
+try:
+    from glai.models_pg import get_distinct_source_files, get_data_by_source_file
+    from glai.webhook_upload import upload_csv_to_n8n
+    POSTGRESQL_AVAILABLE = True
+except ImportError:
+    POSTGRESQL_AVAILABLE = False
+
 # Page configuration
 st.set_page_config(
     page_title="GameLens AI - Train, Predict, Validate, FAQ",
@@ -118,6 +126,44 @@ def show_datasets_tab():
     # File upload section
     st.subheader("Upload New Dataset")
     
+    # n8n Webhook Upload Option
+    if POSTGRESQL_AVAILABLE:
+        st.write("**Option 1: Upload via n8n Webhook (Recommended)**")
+        st.info("Use the n8n webhook to upload CSV files directly to the PostgreSQL database. This bypasses CSV parsing issues.")
+        
+        webhook_files = st.file_uploader(
+            "Upload CSV files via n8n webhook",
+            type=["csv"],
+            accept_multiple_files=True,
+            help="Upload CSV files that will be processed by the n8n workflow and stored in PostgreSQL",
+            key="webhook_uploader"
+        )
+        
+        if webhook_files:
+            for uploaded_file in webhook_files:
+                try:
+                    # Save uploaded file temporarily
+                    temp_path = f"temp_{uploaded_file.name}"
+                    with open(temp_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    
+                    # Upload to n8n webhook
+                    with st.spinner(f"Uploading {uploaded_file.name} via n8n webhook..."):
+                        result = upload_csv_to_n8n(temp_path, uploaded_file.name)
+                    
+                    if result['success']:
+                        st.success(f"✅ Successfully uploaded via webhook: {uploaded_file.name}")
+                        st.write(f"Response: {result['response']}")
+                    else:
+                        st.error(f"❌ Failed to upload {uploaded_file.name}: {result['error']}")
+                    
+                    # Clean up temp file
+                    os.remove(temp_path)
+                    
+                except Exception as e:
+                    st.error(f"❌ Error uploading {uploaded_file.name}: {str(e)}")
+    
+    st.write("**Option 2: Direct Upload (Legacy)**")
     uploaded_files = st.file_uploader(
         "Upload CSV or Excel files",
         type=["csv", "xlsx", "xls"],
@@ -138,17 +184,29 @@ def show_datasets_tab():
                 with open(gamlens_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
                 
-                # Ingest the file using existing system
+                # Process the file using robust gamlens parsing
                 with st.spinner(f"Processing {uploaded_file.name}..."):
-                    dataset = ingest_file(temp_path, notes=f"Uploaded via Streamlit")
-                
-                st.success(f"✅ Successfully ingested: {dataset.canonical_name}")
-                st.write(f"- Platform: {dataset.source_platform}")
-                st.write(f"- Channel: {dataset.channel}")
-                st.write(f"- Game: {dataset.game}")
-                st.write(f"- Records: {dataset.records}")
-                st.write(f"- Date range start: {dataset.data_start_date}")
-                st.write(f"- Upload (End) date: {dataset.data_end_date}")
+                    try:
+                        # Use robust CSV parsing from gamlens
+                        df = read_csv_strict(temp_path)
+                        
+                        # Save to gamlens data directory
+                        gamlens_path = os.path.join(DATA_DIR, uploaded_file.name)
+                        df.to_csv(gamlens_path, index=False)
+                        
+                        # Also ingest using existing system for compatibility
+                        dataset = ingest_file(temp_path, notes=f"Uploaded via Streamlit")
+                        
+                        st.success(f"✅ Successfully processed: {uploaded_file.name}")
+                        st.write(f"- Records: {len(df):,}")
+                        st.write(f"- Columns: {', '.join(df.columns[:5])}{'...' if len(df.columns) > 5 else ''}")
+                        st.write(f"- Date range: {df['date'].min()} to {df['date'].max()}")
+                        st.write(f"- Games: {', '.join(df['game'].unique()[:3])}{'...' if len(df['game'].unique()) > 3 else ''}")
+                        
+                    except Exception as parse_error:
+                        st.error(f"❌ Error parsing {uploaded_file.name}: {str(parse_error)}")
+                        st.info("💡 Try using the n8n webhook upload option above for better CSV handling")
+                        continue
                 
                 # Clean up temp file
                 os.remove(temp_path)
