@@ -11,15 +11,38 @@ def upload_csv_to_n8n(file_path: str, filename: str):
         return {"success": False, "error": "N8N_WEBHOOK_URL environment variable not set."}
 
     try:
+        print(f"[WEBHOOK DEBUG] Uploading file: {filename} to {N8N_WEBHOOK_URL}")
+        
         with open(file_path, 'rb') as f:
+            # Prepare files for multipart/form-data upload
             files = {
-                'file': (filename, f, 'text/csv'),
-                'filename': (None, filename)
+                'file': (filename, f, 'text/csv')
             }
-            response = requests.post(N8N_WEBHOOK_URL, files=files)
+            
+            # Prepare data fields (filename as separate field)
+            data = {
+                'filename': filename
+            }
+            
+            print(f"[WEBHOOK DEBUG] Sending files: {list(files.keys())}")
+            print(f"[WEBHOOK DEBUG] Sending data: {data}")
+            
+            response = requests.post(N8N_WEBHOOK_URL, files=files, data=data)
+        
+        print(f"[WEBHOOK DEBUG] Response status: {response.status_code}")
+        print(f"[WEBHOOK DEBUG] Response headers: {dict(response.headers)}")
+        print(f"[WEBHOOK DEBUG] Response content: {response.text[:500]}...")
         
         response.raise_for_status()
-        return {"success": True, "response": response.json()}
+        
+        # Handle different response types
+        try:
+            response_json = response.json()
+            return {"success": True, "response": response_json}
+        except ValueError:
+            # If response is not JSON, return the text content
+            return {"success": True, "response": response.text}
+            
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": f"Network or HTTP error: {e}"}
     except Exception as e:
