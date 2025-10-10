@@ -13,6 +13,7 @@ import os
 import sys
 import io
 import uuid
+import json
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -569,11 +570,85 @@ Return nothing outside this format."""
                 st.markdown("### 📊 Data Sent to GPT")
                 st.write("✅ ROAS question detected - showing data tables")
                 
+                # Display complete prompt sent to GPT
+                st.markdown("#### 🤖 Complete Prompt Sent to GPT")
+                complete_prompt = f"""System Prompt:
+You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically. 
+You will receive real campaign data points (ROAS, retention, cohorts) and must walk through the analysis step by step — never skipping or guessing numbers.
+
+Your answer must follow this exact structure (in text form, not JSON):
+
+---
+OK: <true/false>
+Insufficient data: <true/false>
+Current average ROAS: <value or "N/A">
+Projected final ROAS: <value or "N/A">
+Break-even day: <number or "unknown">
+Break-even date range: earliest <date>, latest <date>
+Daily projection:
+Day 0: <roas>
+Day 1: <roas>
+Day 3: <roas>
+Day 7: <roas>
+Day 10: <roas>
+Day 14: <roas>
+Day 21: <roas>
+Day 30: <roas>
+Assumptions:
+- ...
+- ...
+Notes:
+- ...
+---
+
+Follow this analysis process strictly:
+
+1️⃣ MODEL  
+Fit a smooth, increasing curve of cumulative ROAS:
+ROAS(t) = Final_ROAS × (1 − exp(−k·t))  
+
+- Choose *k* so that the curve roughly passes through the observed ROAS points.  
+- Choose *Final_ROAS* so that the curve saturates consistently with the retention decay pattern.
+- The curve must be monotonic (each day ≥ previous day).  
+- Continue until ROAS ≥ 1.0; that day = break-even.
+
+2️⃣ DATES  
+Use the provided cohort start dates to compute actual break-even date range:  
+earliest = min(cohort.start_date) + break_even_day  
+latest = max(cohort.start_date) + break_even_day  
+
+3️⃣ RETENTION LINK  
+Adjust the saturation (Final_ROAS) downward if retention declines sharply between d3–d7.  
+Retention tells you how sustainable later conversions are.
+
+4️⃣ EXPLANATION STYLE  
+- Explain in short, clear sentences.
+- Quantify every step (don't invent new data).
+- If some inputs are missing, mark them as unavailable and reason cautiously.
+- Keep tone analytical, calm, confident.
+
+---
+
+Do not output JSON. Write a human-readable analysis in the structure above.
+Return nothing outside this format.
+
+User Prompt:
+Here is the campaign data in JSON format:
+```json
+{json.dumps(payload, indent=2)}
+```
+
+Question: {question}"""
+
+                with st.expander("📝 View Complete Prompt (Click to Expand)", expanded=False):
+                    st.code(complete_prompt, language='text')
+                
                 # Display campaign data table
                 if 'all_campaigns' in payload:
                     campaigns_df = pd.DataFrame(payload['all_campaigns'])
+                    st.markdown("#### 📈 Campaign Data Table")
                     st.dataframe(campaigns_df, use_container_width=True)
-                    st.caption(f"📈 Campaign Data: {len(campaigns_df)} records sent to GPT")
+                    st.caption(f"📊 Campaign Data: {len(campaigns_df)} records sent to GPT")
                 
                 # Display aggregated data
                 if 'aggregates_channel_country' in payload:
@@ -587,6 +662,20 @@ Return nothing outside this format."""
                     st.markdown("#### ℹ️ Data Format Information")
                     for key, value in payload['data_format'].items():
                         st.text(f"{key}: {value}")
+                
+                # Display payload summary
+                st.markdown("#### 📊 Payload Summary")
+                payload_summary = {
+                    "Dataset Name": payload.get('dataset_name', 'N/A'),
+                    "Schema Version": payload.get('schema_version', 'N/A'),
+                    "Granularity": payload.get('granularity', 'N/A'),
+                    "Total Campaigns": len(payload.get('all_campaigns', [])),
+                    "Channel-Country Combinations": len(payload.get('aggregates_channel_country', [])),
+                    "Columns Included": len(payload.get('columns', [])),
+                    "Rows Count": payload.get('rows_count', 'N/A')
+                }
+                for key, value in payload_summary.items():
+                    st.text(f"{key}: {value}")
             
             # Add to chat history
             if 'chat_history' not in st.session_state:
