@@ -556,8 +556,10 @@ Return nothing outside this format."""
             st.markdown(answer)
             
             # For ROAS question, also display the data sent to GPT
+            st.write(f"🔍 Debug: Question = '{question[:100]}...'")  # Debug log
             if "When will we reach 100% ROAS on each channel?" in question:
                 st.markdown("### 📊 Data Sent to GPT")
+                st.write("✅ ROAS question detected - showing data tables")
                 
                 # Display campaign data table
                 if 'all_campaigns' in payload:
