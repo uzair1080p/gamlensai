@@ -55,10 +55,10 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
         "dataset_name": dataset_name,
         "granularity": "campaign-day",
         "data_format": {
-            "roas_columns": "All ROAS values (roas_d0, roas_d1, roas_d3, roas_d7, roas_d14, roas_d30, roas_d60, roas_d90) are in DECIMAL format where 1.0 = 100% ROI. Example: 0.4 = 40% ROAS, 0.5 = 50% ROAS, 1.0 = 100% ROAS",
+            "roas_columns": "All ROAS values (roas_d0, roas_d1, roas_d3, roas_d7, roas_d14, roas_d30, roas_d60, roas_d90) are ALREADY normalized ratios where 1.0 = 100% ROI. Example: 0.4 = 0.4× (40% ROAS), 0.003 = 0.3× (30% ROAS), 1.0 = 100% ROAS. Do NOT rescale these values.",
             "retention_columns": "All retention values (retention_rate_d1, retention_rate_d2, retention_rate_d3, retention_rate_d7, retention_rate_d14, retention_rate_d30) are in DECIMAL format where 1.0 = 100% retention. Example: 0.19 = 19% retention. Use these for retention analysis.",
             "currency_columns": "All monetary values (cost, revenue, ad_revenue, total_revenue, CPI, ARPU) are in dollars ($)",
-            "percentage_display": "When displaying percentages, multiply decimal values by 100. Example: 0.4 ROAS = 40% ROAS"
+            "percentage_display": "When displaying percentages, multiply decimal values by 100. Example: 0.4 ROAS = 40% ROAS, 0.003 ROAS = 0.3% ROAS"
         },
         "columns": keep,
         "rows_count": int(len(slim)),
