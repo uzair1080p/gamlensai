@@ -20,9 +20,11 @@ def _stringify_dates(df: pd.DataFrame, cols=("date",)) -> pd.DataFrame:
 
 def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 15) -> dict:
     """Create a comprehensive payload with full ROAS time-series data for AI analysis."""
-    # Include all essential columns plus all ROAS columns for trend analysis
+    # Include all essential columns plus all ROAS and retention columns for trend analysis
+    retention_cols = ["retention_rate_d1","retention_rate_d2","retention_rate_d3","retention_rate_d7",
+                     "retention_rate_d14","retention_rate_d30"]
     keep = ["game","channel","platform","country","date","installs","cost","revenue","ad_revenue","total_revenue",
-            "CPI ($)","ARPU ($)","ROAS","ROI 100% By (Day)","Retention D7 (%)"] + ROAS_COLS
+            "CPI ($)","ARPU ($)","ROAS","ROI 100% By (Day)","Retention D7 (%)"] + ROAS_COLS + retention_cols
     
     # Filter to only existing columns
     keep = [c for c in keep if c in df_kpi.columns]
@@ -31,9 +33,10 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
     # make dates JSON-safe
     slim = _stringify_dates(slim, cols=("date",))
 
-    # Send ALL campaign-day records for detailed analysis (not just top_k)
-    # This allows AI to see ROAS progression across all days
-    all_data = slim.to_dict(orient="records")
+    # Send top campaigns for detailed analysis to avoid token limits
+    # Sort by cost to get the most important campaigns first
+    slim_sorted = slim.sort_values("cost", ascending=False)
+    all_data = slim_sorted.head(top_k * 2).to_dict(orient="records")  # Send 2x top_k to ensure good coverage
 
     # Also provide aggregated summary for context
     agg = (slim.groupby(["channel","country"], dropna=False)
@@ -53,7 +56,7 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
         "granularity": "campaign-day",
         "data_format": {
             "roas_columns": "All ROAS values (roas_d0, roas_d1, roas_d3, roas_d7, roas_d14, roas_d30, roas_d60, roas_d90) are in DECIMAL format where 1.0 = 100% ROI. Example: 0.4 = 40% ROAS, 0.5 = 50% ROAS, 1.0 = 100% ROAS",
-            "retention_columns": "All retention values (retention_rate_d1, retention_rate_d2, etc.) are in DECIMAL format where 1.0 = 100% retention. Example: 0.19 = 19% retention",
+            "retention_columns": "All retention values (retention_rate_d1, retention_rate_d2, retention_rate_d3, retention_rate_d7, retention_rate_d14, retention_rate_d30) are in DECIMAL format where 1.0 = 100% retention. Example: 0.19 = 19% retention. Use these for retention analysis.",
             "currency_columns": "All monetary values (cost, revenue, ad_revenue, total_revenue, CPI, ARPU) are in dollars ($)",
             "percentage_display": "When displaying percentages, multiply decimal values by 100. Example: 0.4 ROAS = 40% ROAS"
         },
