@@ -155,7 +155,7 @@ def show_datasets_tab():
                     if result['success']:
                         st.success(f"✅ Successfully uploaded via webhook: {uploaded_file.name}")
                         st.write(f"Response: {result['response']}")
-        else:
+                    else:
                         st.error(f"❌ Failed to upload {uploaded_file.name}: {result['error']}")
                     
                     # Clean up temp file
