@@ -69,9 +69,32 @@ def get_distinct_source_files():
         session.close()
 
 def get_data_by_source_file(source_file_name: str):
+    import pandas as pd
     session = get_db_session_pg()
     try:
         data = session.query(CsvUpload).filter(CsvUpload.source_file == source_file_name).all()
-        return data
+        
+        # Convert SQLAlchemy objects to pandas DataFrame
+        if data:
+            # Convert each object to a dictionary
+            data_dicts = []
+            for row in data:
+                row_dict = {}
+                for column in CsvUpload.__table__.columns:
+                    row_dict[column.name] = getattr(row, column.name)
+                data_dicts.append(row_dict)
+            
+            # Create DataFrame
+            df = pd.DataFrame(data_dicts)
+            return df
+        else:
+            # Return empty DataFrame with expected columns
+            return pd.DataFrame(columns=[
+                'source_file', 'game', 'channel', 'platform', 'country', 'date',
+                'installs', 'cost', 'ad_revenue', 'revenue',
+                'roas_d0', 'roas_d1', 'roas_d3', 'roas_d7', 'roas_d14', 'roas_d30', 'roas_d60', 'roas_d90',
+                'retention_rate_d1', 'retention_rate_d2', 'retention_rate_d3', 'retention_rate_d7', 'retention_rate_d14', 'retention_rate_d30',
+                'level_1_events', 'level_5_events', 'level_10_events', 'level_15_events', 'level_20_events', 'level_25_events', 'level_30_events', 'level_40_events', 'level_50_events'
+            ])
     finally:
         session.close()
