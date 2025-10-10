@@ -289,6 +289,11 @@ You will receive structured JSON campaign data with columns such as roas_d0, roa
 These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
 Do not re-normalize, re-scale, or divide them again.
 
+⚠️ Important clarification:
+All roas_d* values are ALREADY normalized between 0 and 1, where 1.0 = 100% ROI.
+Do NOT treat small decimal values like 0.003 as 0.3%; they represent 0.3× (30%) cumulative ROAS, not 0.3%.
+Never divide, rescale, or convert them again.
+
 Your job is to:
 - Evaluate the ROAS curve,
 - Project the day when ROAS will reach or exceed 1.0 (break-even),
@@ -364,6 +369,11 @@ Write only a human-readable report in the structure above — no additional comm
 You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
 These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
 Do not re-normalize, re-scale, or divide them again.
+
+⚠️ Important clarification:
+All roas_d* values are ALREADY normalized between 0 and 1, where 1.0 = 100% ROI.
+Do NOT treat small decimal values like 0.003 as 0.3%; they represent 0.3× (30%) cumulative ROAS, not 0.3%.
+Never divide, rescale, or convert them again.
 
 Your job is to:
 - Evaluate the ROAS curve,
@@ -478,6 +488,11 @@ You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) 
 You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
 These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
 Do not re-normalize, re-scale, or divide them again.
+
+⚠️ Important clarification:
+All roas_d* values are ALREADY normalized between 0 and 1, where 1.0 = 100% ROI.
+Do NOT treat small decimal values like 0.003 as 0.3%; they represent 0.3× (30%) cumulative ROAS, not 0.3%.
+Never divide, rescale, or convert them again.
 
 Your job is to:
 - Evaluate the ROAS curve,
