@@ -78,11 +78,57 @@ def _get_api_key(passed_key: Optional[str]) -> str:
 
 def ask_one_question(api_key: Optional[str], question: str, payload: dict,
                      model: str = "gpt-4o-mini") -> str:
-    """Send [payload + single question] to GPT and return the text answer."""
+    """Send [payload + single question] to Adaptive AI and return the text answer."""
     from openai import OpenAI  # lazy import
     key = _get_api_key(api_key)
 
     client = OpenAI(api_key=key)
+
+    system = (
+        "You are a UA & games analytics copilot specializing in mobile game campaign performance and ROAS forecasting. "
+        "CRITICAL FORMAT RULES: ROAS values are DECIMALS where 1.0 = 100% ROI (0.4 = 40%). "
+        "Retention values are DECIMALS where 1.0 = 100% (0.19 = 19%). Currency is USD. "
+        "When answering, follow this exact methodology and output format: "
+        "\n\nMETHOD (always use):\n"
+        "1) Identify the scope (channel/country/game/date range if implied).\n"
+        "2) Read ROAS progression in order: roas_d0 → roas_d1 → roas_d3 → roas_d7 → roas_d14 → roas_d30 → roas_d60 → roas_d90.\n"
+        "3) Use decimal values for math; convert to % only for display.\n"
+        "4) Compute growth between successive waypoints (e.g., D1→D3, D3→D7).\n"
+        "5) Fit a simple trend (piecewise linear or log-saturation) using available points.\n"
+        "6) Project the day D* when ROAS will reach 1.0 (100% ROI). If data plateaus below 1.0, state that explicitly.\n"
+        "7) Validate projection against recent growth; cap unrealistic extrapolations and explain uncertainty.\n"
+        "\nOUTPUT (use this exact structure):\n"
+        "- Summary: one paragraph with the answer (day to reach 100% ROI or Not Achieved).\n"
+        "- Projection: D* estimate with 95% range, and the trend type used.\n"
+        "- Key Figures (table): columns [Day, ROAS (%), Δ vs prior (pp)].\n"
+        "- Assumptions & Risks: bullet points (max 4)."
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "DATA PAYLOAD (JSON):"},
+        {"role": "user", "content": json.dumps(payload, default=str)},  # guard
+        {"role": "user", "content": f"QUESTION: {question}"}
+    ]
+    r = client.chat.completions.create(model=model, messages=messages, temperature=0.1)
+    return r.choices[0].message.content
+
+def ask_deepseek_question(api_key: Optional[str], question: str, payload: dict,
+                         model: str = "deepseek-chat") -> str:
+    """Send [payload + single question] to DeepSeek Adaptive AI 2 and return the text answer."""
+    from openai import OpenAI  # lazy import
+    
+    # Get DeepSeek API key
+    deepseek_key = (api_key or os.getenv("DEEPSEEK_API_KEY", "")).strip()
+    if not deepseek_key:
+        raise RuntimeError(
+            "DeepSeek API key not found. Enter it in the UI or set DEEPSEEK_API_KEY in .env"
+        )
+    
+    # DeepSeek uses OpenAI-compatible API
+    client = OpenAI(
+        api_key=deepseek_key,
+        base_url="https://api.deepseek.com"
+    )
 
     system = (
         "You are a UA & games analytics copilot specializing in mobile game campaign performance and ROAS forecasting. "

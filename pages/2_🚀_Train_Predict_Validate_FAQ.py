@@ -27,7 +27,7 @@ if str(gamlens_path) not in sys.path:
 # Import gamlens modules
 from lib.utils import ensure_dirs, read_csv_strict, DATA_DIR
 from lib.kpis import add_core_kpis
-from lib.ai import build_payload_for_ai, ask_one_question
+from lib.ai import build_payload_for_ai, ask_one_question, ask_deepseek_question
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -155,7 +155,7 @@ def show_datasets_tab():
                     if result['success']:
                         st.success(f"✅ Successfully uploaded via webhook: {uploaded_file.name}")
                         st.write(f"Response: {result['response']}")
-                    else:
+        else:
                         st.error(f"❌ Failed to upload {uploaded_file.name}: {result['error']}")
                     
                     # Clean up temp file
@@ -196,8 +196,8 @@ def show_datasets_tab():
                         df.to_csv(gamlens_path, index=False)
                         
                         # Also ingest using existing system for compatibility
-                        dataset = ingest_file(temp_path, notes=f"Uploaded via Streamlit")
-                        
+                    dataset = ingest_file(temp_path, notes=f"Uploaded via Streamlit")
+                
                         st.success(f"✅ Successfully processed: {uploaded_file.name}")
                         st.write(f"- Records: {len(df):,}")
                         st.write(f"- Columns: {', '.join(df.columns[:5])}{'...' if len(df.columns) > 5 else ''}")
@@ -220,9 +220,9 @@ def show_datasets_tab():
     
     # Get datasets from database
     try:
-        db = get_db_session()
+                            db = get_db_session()
         datasets = db.query(Dataset).filter(Dataset.ingest_completed_at.isnot(None)).order_by(Dataset.ingest_started_at.desc()).all()
-        db.close()
+                                db.close()
         
         if not datasets:
             st.info("No datasets found. Upload a file above.")
@@ -247,7 +247,7 @@ def show_datasets_tab():
                 st.write(f"**Date Range:** {selected_dataset.data_start_date} to {selected_dataset.data_end_date}")
                 st.write(f"**Uploaded:** {selected_dataset.ingest_started_at}")
     
-    except Exception as e:
+                                    except Exception as e:
         st.error(f"Error loading datasets: {str(e)}")
 
 def show_training_tab():
@@ -279,7 +279,7 @@ def show_predictions_tab():
     try:
         if POSTGRESQL_AVAILABLE:
             pg_datasets = get_distinct_source_files()
-    except Exception as e:
+                                    except Exception as e:
         st.error(f"Error connecting to PostgreSQL: {str(e)}")
         st.info("Please ensure the database credentials are correct in .env file")
         return
@@ -391,8 +391,8 @@ def show_predictions_tab():
                 df_kpi, table = add_core_kpis(df)
                 st.success(f"✅ Loaded dataset from PostgreSQL: {selected_dataset_name}")
                 dataset_loaded = True
-                
-            except Exception as e:
+                            
+                        except Exception as e:
                 st.error(f"Error loading from PostgreSQL: {str(e)}")
         
         # Fallback: If PostgreSQL fails, show error (no local CSV support in this version)
@@ -404,24 +404,24 @@ def show_predictions_tab():
             st.session_state.df_kpi = df_kpi
             st.session_state.table = table
             st.session_state.ds_name = selected_dataset_name
-        else:
+                                else:
             st.error("❌ Could not load dataset data from any source")
             return
-    
-    except Exception as e:
+                                
+                            except Exception as e:
         st.error(f"Error loading dataset: {str(e)}")
         return
     
     # Display summary metrics
     st.subheader("📊 Campaign Summary")
     col1, col2, col3, col4 = st.columns(4)
-    with col1:
+                with col1:
         total_cost = df_kpi["cost"].sum()
         st.metric("Total Cost", f"${total_cost:,.2f}")
-    with col2:
+                with col2:
         total_revenue = df_kpi["total_revenue"].sum()
         st.metric("Total Revenue", f"${total_revenue:,.2f}")
-    with col3:
+                with col3:
         total_installs = df_kpi["installs"].sum()
         st.metric("Total Installs", f"{total_installs:,.0f}")
     with col4:
@@ -437,7 +437,7 @@ def show_predictions_tab():
     # API key input
     env_key = os.getenv("OPENAI_API_KEY", "").strip()
     api_key = st.text_input(
-        "OpenAI API Key (optional if OPENAI_API_KEY is set in .env)",
+        "Adaptive AI API Key (optional if OPENAI_API_KEY is set in .env)",
         type="password",
         value="",
         help="Leave empty to use OPENAI_API_KEY from .env file"
@@ -445,24 +445,24 @@ def show_predictions_tab():
     
     # Preset questions
     st.write("**Quick Questions:**")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
         if st.button("🎯 Which campaigns should we pause?", use_container_width=True):
             question = "Which campaigns should be paused due to poor ROI/retention? Provide bullets with thresholds and reasons."
             st.session_state.current_question = question
-    
-    with col2:
+            
+            with col2:
         if st.button("💰 Required CPI for D30 profitability?", use_container_width=True):
             question = "What CPI is needed to reach profitability by D30 per channel? Provide a table with assumptions."
             st.session_state.current_question = question
-    
-    with col3:
+            
+            with col3:
         if st.button("🚀 Which geo is ready to scale?", use_container_width=True):
             question = "Which geo is ready to scale aggressively? Provide criteria, data support, and risks."
             st.session_state.current_question = question
-    
-    with col4:
+            
+            with col4:
         if st.button("When will we reach 100% ROAS on each channel?", use_container_width=True):
             # Special prompt for ROAS curve projection
             question = """You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance
@@ -548,15 +548,24 @@ Return nothing outside this format."""
             dataset_name = st.session_state.get('ds_name', selected_dataset_name)
             payload = build_payload_for_ai(df_kpi, dataset_name)
             
-            # Get AI response
-            with st.spinner("🤖 AI is analyzing your data..."):
-                answer = ask_one_question(api_key, question, payload)
+            # Get AI responses from both systems
+            with st.spinner("🤖 Adaptive AI is analyzing your data..."):
+                answer1 = ask_one_question(api_key, question, payload)
             
-            # Display response
-            st.markdown("### 🤖 AI Response")
-            st.markdown(answer)
+            with st.spinner("🤖 Adaptive AI 2 is analyzing your data..."):
+                try:
+                    answer2 = ask_deepseek_question(None, question, payload)  # Use DEEPSEEK_API_KEY from .env
+                    except Exception as e:
+                    answer2 = f"❌ Adaptive AI 2 Error: {str(e)}"
             
-            # For ROAS question, also display the data sent to GPT
+            # Display responses
+            st.markdown("### 🤖 Adaptive AI Response")
+            st.markdown(answer1)
+            
+            st.markdown("### 🤖 Adaptive AI 2 Response")
+            st.markdown(answer2)
+            
+            # For ROAS question, also display the data sent to Adaptive AI
             st.write(f"🔍 Debug: Question = '{question[:100]}...'")  # Debug log
             
             # Check if this is the ROAS question (more flexible matching)
@@ -567,11 +576,11 @@ Return nothing outside this format."""
             )
             
             if is_roas_question:
-                st.markdown("### 📊 Data Sent to GPT")
+                st.markdown("### 📊 Data Sent to Adaptive AI")
                 st.write("✅ ROAS question detected - showing data tables")
                 
-                # Display complete prompt sent to GPT
-                st.markdown("#### 🤖 Complete Prompt Sent to GPT")
+                # Display complete prompt sent to Adaptive AI
+                st.markdown("#### 🤖 Complete Prompt Sent to Adaptive AI")
                 complete_prompt = f"""System Prompt:
 You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically. 
 You will receive real campaign data points (ROAS, retention, cohorts) and must walk through the analysis step by step — never skipping or guessing numbers.
@@ -648,7 +657,7 @@ Question: {question}"""
                     campaigns_df = pd.DataFrame(payload['all_campaigns'])
                     st.markdown("#### 📈 Campaign Data Table")
                     st.dataframe(campaigns_df, use_container_width=True)
-                    st.caption(f"📊 Campaign Data: {len(campaigns_df)} records sent to GPT")
+                    st.caption(f"📊 Campaign Data: {len(campaigns_df)} records sent to Adaptive AI")
                 
                 # Display aggregated data
                 if 'aggregates_channel_country' in payload:
@@ -681,7 +690,8 @@ Question: {question}"""
             if 'chat_history' not in st.session_state:
                 st.session_state.chat_history = []
             st.session_state.chat_history.append(("User", question))
-            st.session_state.chat_history.append(("AI", answer))
+            st.session_state.chat_history.append(("Adaptive AI", answer1))
+            st.session_state.chat_history.append(("Adaptive AI 2", answer2))
             
             # Clear current question
             del st.session_state.current_question
@@ -718,7 +728,7 @@ def show_faq_tab():
     **Q: What questions can I ask?**
     A: You can ask about campaign performance, ROI analysis, scaling recommendations, retention analysis, and more. Use the preset buttons or type your own questions.
     
-    **Q: Do I need an OpenAI API key?**
+    **Q: Do I need an Adaptive AI API key?**
     A: Yes, for AI recommendations. Set OPENAI_API_KEY in your .env file or enter it in the UI.
     
     **Q: How accurate are the AI recommendations?**
@@ -733,7 +743,7 @@ def show_faq_tab():
     
     ### 🔧 Technical
     **Q: What if I get an error?**
-    A: Check that your data matches the expected schema, ensure your OpenAI API key is valid, and try refreshing the page.
+    A: Check that your data matches the expected schema, ensure your Adaptive AI API key is valid, and try refreshing the page.
     
     **Q: Can I export results?**
     A: Yes, you can copy AI responses and download data tables from the interface.
