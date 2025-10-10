@@ -247,7 +247,7 @@ def show_datasets_tab():
                 st.write(f"**Date Range:** {selected_dataset.data_start_date} to {selected_dataset.data_end_date}")
                 st.write(f"**Uploaded:** {selected_dataset.ingest_started_at}")
     
-                                    except Exception as e:
+    except Exception as e:
         st.error(f"Error loading datasets: {str(e)}")
 
 def show_training_tab():
