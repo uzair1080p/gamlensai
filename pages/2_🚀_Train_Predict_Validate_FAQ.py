@@ -244,7 +244,7 @@ def show_predictions_tab():
                     df[col] = pd.to_numeric(df[col].astype(str).replace(['', 'None', 'null', 'NULL'], '0'), errors='coerce').fillna(0)
             
             # Add core KPIs
-            df_kpi = add_core_kpis(df)
+            df_kpi, summary_table = add_core_kpis(df)
             
             # Store in session state
             st.session_state.df_kpi = df_kpi
