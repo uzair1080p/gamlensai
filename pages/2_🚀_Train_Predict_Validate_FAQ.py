@@ -303,6 +303,12 @@ Your job is to evaluate ROAS performance and forecast when it will reach 100% (b
 
 If a number looks "too small," assume under-reporting or early-stage data — do NOT rescale down further.
 
+🕒 Temporal Context Rule:
+If roas_d7, roas_d14, roas_d30, etc. are blank or null, assume those dates have not yet occurred.
+Do NOT interpret missing future-day ROAS as zero.
+Treat existing data (e.g., d0–d3) as early performance snapshots of an ongoing campaign.
+When forecasting, extend the growth curve forward in time from these partial observations.
+
 ---
 
 Your output must strictly follow this structure (in text form, not JSON):
@@ -393,6 +399,12 @@ Your job is to evaluate ROAS performance and forecast when it will reach 100% (b
 - Always assume roas_d* values represent *cumulative* ROAS growth toward 1.0 (100% ROI).
 
 If a number looks "too small," assume under-reporting or early-stage data — do NOT rescale down further.
+
+🕒 Temporal Context Rule:
+If roas_d7, roas_d14, roas_d30, etc. are blank or null, assume those dates have not yet occurred.
+Do NOT interpret missing future-day ROAS as zero.
+Treat existing data (e.g., d0–d3) as early performance snapshots of an ongoing campaign.
+When forecasting, extend the growth curve forward in time from these partial observations.
 
 ---
 
@@ -522,6 +534,12 @@ Your job is to evaluate ROAS performance and forecast when it will reach 100% (b
 - Always assume roas_d* values represent *cumulative* ROAS growth toward 1.0 (100% ROI).
 
 If a number looks "too small," assume under-reporting or early-stage data — do NOT rescale down further.
+
+🕒 Temporal Context Rule:
+If roas_d7, roas_d14, roas_d30, etc. are blank or null, assume those dates have not yet occurred.
+Do NOT interpret missing future-day ROAS as zero.
+Treat existing data (e.g., d0–d3) as early performance snapshots of an ongoing campaign.
+When forecasting, extend the growth curve forward in time from these partial observations.
 
 ---
 
