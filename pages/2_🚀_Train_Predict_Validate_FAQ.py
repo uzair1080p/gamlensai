@@ -285,19 +285,27 @@ def show_predictions_tab():
                     # Special prompt for ROAS curve projection
                     question = """You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically.
 
-You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
-These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
-Do not re-normalize, re-scale, or divide them again.
+You will receive structured JSON campaign data with fields like:
+roas_d0, roas_d1, roas_d3, roas_d7, retention rates, cost, installs, and revenue.
+These represent performance by day or cohort.
 
-⚠️ Important clarification:
-All roas_d* values are ALREADY normalized between 0 and 1, where 1.0 = 100% ROI.
-Do NOT treat small decimal values like 0.003 as 0.3%; they represent 0.3× (30%) cumulative ROAS, not 0.3%.
-Never divide, rescale, or convert them again.
+Your job is to evaluate ROAS performance and forecast when it will reach 100% (break-even), using clear reasoning and quantitative analysis.
 
-Your job is to:
-- Evaluate the ROAS curve,
-- Project the day when ROAS will reach or exceed 1.0 (break-even),
-- Explain reasoning clearly, in text, following this structure exactly:
+---
+
+⚠️ Critical Data Interpretation Rule:
+- All roas_d* values are ALREADY normalized ratios between 0 and 1, where 1.0 = 100% ROI.
+- Do NOT divide or rescale them again.
+- When you see small decimals (e.g. 0.003, 0.004, 0.009), treat them as 0.3×, 0.4×, 0.9× cumulative ROAS (≈30%, 40%, 90%), not 0.3%.
+- Multiply by 100 only when expressing percentages for humans.
+- Never interpret them as 0.3% or 0.03%.
+- Always assume roas_d* values represent *cumulative* ROAS growth toward 1.0 (100% ROI).
+
+If a number looks "too small," assume under-reporting or early-stage data — do NOT rescale down further.
+
+---
+
+Your output must strictly follow this structure (in text form, not JSON):
 
 ---
 OK: <true/false>
@@ -325,12 +333,13 @@ Notes:
 Follow this process strictly:
 
 1️⃣ MODEL  
-Fit a smooth, increasing curve of cumulative ROAS:
+Fit a smooth, increasing cumulative ROAS curve:
 ROAS(t) = Final_ROAS × (1 − exp(−k·t))
 
-- Use existing roas_d0–roas_d7 points to estimate the shape.
+- Use observed roas_d* values (d0, d1, d3, d7, etc.) to estimate the curve.
 - The curve must be monotonic (each later day ≥ previous).
-- Final_ROAS should match long-term growth consistent with retention (not exceed plausible limits).
+- Choose Final_ROAS so that it aligns with retention decay — don't exceed plausible limits.
+- Continue modeling until ROAS ≥ 1.0; that day = break-even.
 
 2️⃣ DATES  
 Use available cohort dates to derive real break-even range:
@@ -338,19 +347,20 @@ earliest = min(start_date) + break_even_day
 latest = max(start_date) + break_even_day  
 
 3️⃣ RETENTION LINK  
-If retention drops sharply after day 3, slow down ROAS growth after that point.
-If retention stabilizes, allow continued gradual improvement.
+- If retention drops sharply after day 3, slow ROAS growth after that point.
+- If retention stabilizes, allow smoother growth toward 100%.
 
 4️⃣ EXPLANATION STYLE  
-- Explain with short, factual sentences.
-- Quantify everything; do not guess.
-- If input data is missing or nonsensical, mark "Insufficient data: true".
-- Keep tone professional and analytical.
+- Write short, factual sentences.
+- Quantify each observation.
+- If data is missing or inconsistent, mark "Insufficient data: true".
+- Keep tone analytical, neutral, and professional.
+- Do not guess numbers — reason from provided data.
 
 ---
 
-Do not output JSON.  
-Write only a human-readable report in the structure above — no additional commentary."""
+Do not output JSON.
+Write only a human-readable report in the structure above."""
                     st.session_state.current_question = question
             
             with col2:
@@ -366,19 +376,27 @@ Write only a human-readable report in the structure above — no additional comm
                     # Special prompt for ROAS curve projection
                     question = """You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically.
 
-You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
-These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
-Do not re-normalize, re-scale, or divide them again.
+You will receive structured JSON campaign data with fields like:
+roas_d0, roas_d1, roas_d3, roas_d7, retention rates, cost, installs, and revenue.
+These represent performance by day or cohort.
 
-⚠️ Important clarification:
-All roas_d* values are ALREADY normalized between 0 and 1, where 1.0 = 100% ROI.
-Do NOT treat small decimal values like 0.003 as 0.3%; they represent 0.3× (30%) cumulative ROAS, not 0.3%.
-Never divide, rescale, or convert them again.
+Your job is to evaluate ROAS performance and forecast when it will reach 100% (break-even), using clear reasoning and quantitative analysis.
 
-Your job is to:
-- Evaluate the ROAS curve,
-- Project the day when ROAS will reach or exceed 1.0 (break-even),
-- Explain reasoning clearly, in text, following this structure exactly:
+---
+
+⚠️ Critical Data Interpretation Rule:
+- All roas_d* values are ALREADY normalized ratios between 0 and 1, where 1.0 = 100% ROI.
+- Do NOT divide or rescale them again.
+- When you see small decimals (e.g. 0.003, 0.004, 0.009), treat them as 0.3×, 0.4×, 0.9× cumulative ROAS (≈30%, 40%, 90%), not 0.3%.
+- Multiply by 100 only when expressing percentages for humans.
+- Never interpret them as 0.3% or 0.03%.
+- Always assume roas_d* values represent *cumulative* ROAS growth toward 1.0 (100% ROI).
+
+If a number looks "too small," assume under-reporting or early-stage data — do NOT rescale down further.
+
+---
+
+Your output must strictly follow this structure (in text form, not JSON):
 
 ---
 OK: <true/false>
@@ -406,12 +424,13 @@ Notes:
 Follow this process strictly:
 
 1️⃣ MODEL  
-Fit a smooth, increasing curve of cumulative ROAS:
+Fit a smooth, increasing cumulative ROAS curve:
 ROAS(t) = Final_ROAS × (1 − exp(−k·t))
 
-- Use existing roas_d0–roas_d7 points to estimate the shape.
+- Use observed roas_d* values (d0, d1, d3, d7, etc.) to estimate the curve.
 - The curve must be monotonic (each later day ≥ previous).
-- Final_ROAS should match long-term growth consistent with retention (not exceed plausible limits).
+- Choose Final_ROAS so that it aligns with retention decay — don't exceed plausible limits.
+- Continue modeling until ROAS ≥ 1.0; that day = break-even.
 
 2️⃣ DATES  
 Use available cohort dates to derive real break-even range:
@@ -419,19 +438,20 @@ earliest = min(start_date) + break_even_day
 latest = max(start_date) + break_even_day  
 
 3️⃣ RETENTION LINK  
-If retention drops sharply after day 3, slow down ROAS growth after that point.
-If retention stabilizes, allow continued gradual improvement.
+- If retention drops sharply after day 3, slow ROAS growth after that point.
+- If retention stabilizes, allow smoother growth toward 100%.
 
 4️⃣ EXPLANATION STYLE  
-- Explain with short, factual sentences.
-- Quantify everything; do not guess.
-- If input data is missing or nonsensical, mark "Insufficient data: true".
-- Keep tone professional and analytical.
+- Write short, factual sentences.
+- Quantify each observation.
+- If data is missing or inconsistent, mark "Insufficient data: true".
+- Keep tone analytical, neutral, and professional.
+- Do not guess numbers — reason from provided data.
 
 ---
 
-Do not output JSON.  
-Write only a human-readable report in the structure above — no additional commentary."""
+Do not output JSON.
+Write only a human-readable report in the structure above."""
                     st.session_state.current_question = question
             
             # Custom question input
@@ -485,19 +505,27 @@ Write only a human-readable report in the structure above — no additional comm
                     complete_prompt = f"""System Prompt:
 You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically.
 
-You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
-These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
-Do not re-normalize, re-scale, or divide them again.
+You will receive structured JSON campaign data with fields like:
+roas_d0, roas_d1, roas_d3, roas_d7, retention rates, cost, installs, and revenue.
+These represent performance by day or cohort.
 
-⚠️ Important clarification:
-All roas_d* values are ALREADY normalized between 0 and 1, where 1.0 = 100% ROI.
-Do NOT treat small decimal values like 0.003 as 0.3%; they represent 0.3× (30%) cumulative ROAS, not 0.3%.
-Never divide, rescale, or convert them again.
+Your job is to evaluate ROAS performance and forecast when it will reach 100% (break-even), using clear reasoning and quantitative analysis.
 
-Your job is to:
-- Evaluate the ROAS curve,
-- Project the day when ROAS will reach or exceed 1.0 (break-even),
-- Explain reasoning clearly, in text, following this structure exactly:
+---
+
+⚠️ Critical Data Interpretation Rule:
+- All roas_d* values are ALREADY normalized ratios between 0 and 1, where 1.0 = 100% ROI.
+- Do NOT divide or rescale them again.
+- When you see small decimals (e.g. 0.003, 0.004, 0.009), treat them as 0.3×, 0.4×, 0.9× cumulative ROAS (≈30%, 40%, 90%), not 0.3%.
+- Multiply by 100 only when expressing percentages for humans.
+- Never interpret them as 0.3% or 0.03%.
+- Always assume roas_d* values represent *cumulative* ROAS growth toward 1.0 (100% ROI).
+
+If a number looks "too small," assume under-reporting or early-stage data — do NOT rescale down further.
+
+---
+
+Your output must strictly follow this structure (in text form, not JSON):
 
 ---
 OK: <true/false>
@@ -525,12 +553,13 @@ Notes:
 Follow this process strictly:
 
 1️⃣ MODEL  
-Fit a smooth, increasing curve of cumulative ROAS:
+Fit a smooth, increasing cumulative ROAS curve:
 ROAS(t) = Final_ROAS × (1 − exp(−k·t))
 
-- Use existing roas_d0–roas_d7 points to estimate the shape.
+- Use observed roas_d* values (d0, d1, d3, d7, etc.) to estimate the curve.
 - The curve must be monotonic (each later day ≥ previous).
-- Final_ROAS should match long-term growth consistent with retention (not exceed plausible limits).
+- Choose Final_ROAS so that it aligns with retention decay — don't exceed plausible limits.
+- Continue modeling until ROAS ≥ 1.0; that day = break-even.
 
 2️⃣ DATES  
 Use available cohort dates to derive real break-even range:
@@ -538,19 +567,20 @@ earliest = min(start_date) + break_even_day
 latest = max(start_date) + break_even_day  
 
 3️⃣ RETENTION LINK  
-If retention drops sharply after day 3, slow down ROAS growth after that point.
-If retention stabilizes, allow continued gradual improvement.
+- If retention drops sharply after day 3, slow ROAS growth after that point.
+- If retention stabilizes, allow smoother growth toward 100%.
 
 4️⃣ EXPLANATION STYLE  
-- Explain with short, factual sentences.
-- Quantify everything; do not guess.
-- If input data is missing or nonsensical, mark "Insufficient data: true".
-- Keep tone professional and analytical.
+- Write short, factual sentences.
+- Quantify each observation.
+- If data is missing or inconsistent, mark "Insufficient data: true".
+- Keep tone analytical, neutral, and professional.
+- Do not guess numbers — reason from provided data.
 
 ---
 
-Do not output JSON.  
-Write only a human-readable report in the structure above — no additional commentary.
+Do not output JSON.
+Write only a human-readable report in the structure above.
 
 User Prompt:
 Here is the campaign data in JSON format:
