@@ -295,12 +295,16 @@ def show_predictions_tab():
             with col4:
                 if st.button("When will we reach 100% ROAS on each channel?", use_container_width=True):
                     # Special prompt for ROAS curve projection
-                    question = """You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance
-and projections clearly and methodically. 
-You will receive real campaign data points (ROAS, retention, cohorts) and must walk through
-the analysis step by step — never skipping or guessing numbers.
+                    question = """You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically.
 
-Your answer must follow this exact structure (in text form, not JSON):
+You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
+These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
+Do not re-normalize, re-scale, or divide them again.
+
+Your job is to:
+- Evaluate the ROAS curve,
+- Project the day when ROAS will reach or exceed 1.0 (break-even),
+- Explain reasoning clearly, in text, following this structure exactly:
 
 ---
 OK: <true/false>
@@ -325,36 +329,35 @@ Notes:
 - ...
 ---
 
-Follow this analysis process strictly:
+Follow this process strictly:
 
 1️⃣ MODEL  
 Fit a smooth, increasing curve of cumulative ROAS:
-ROAS(t) = Final_ROAS × (1 − exp(−k·t))  
+ROAS(t) = Final_ROAS × (1 − exp(−k·t))
 
-- Choose *k* so that the curve roughly passes through the observed ROAS points.  
-- Choose *Final_ROAS* so that the curve saturates consistently with the retention decay pattern.
-- The curve must be monotonic (each day ≥ previous day).  
-- Continue until ROAS ≥ 1.0; that day = break-even.
+- Use existing roas_d0–roas_d7 points to estimate the shape.
+- The curve must be monotonic (each later day ≥ previous).
+- Final_ROAS should match long-term growth consistent with retention (not exceed plausible limits).
 
 2️⃣ DATES  
-Use the provided cohort start dates to compute actual break-even date range:  
-earliest = min(cohort.start_date) + break_even_day  
-latest = max(cohort.start_date) + break_even_day  
+Use available cohort dates to derive real break-even range:
+earliest = min(start_date) + break_even_day  
+latest = max(start_date) + break_even_day  
 
 3️⃣ RETENTION LINK  
-Adjust the saturation (Final_ROAS) downward if retention declines sharply between d3–d7.  
-Retention tells you how sustainable later conversions are.
+If retention drops sharply after day 3, slow down ROAS growth after that point.
+If retention stabilizes, allow continued gradual improvement.
 
 4️⃣ EXPLANATION STYLE  
-- Explain in short, clear sentences.
-- Quantify every step (don't invent new data).
-- If some inputs are missing, mark them as unavailable and reason cautiously.
-- Keep tone analytical, calm, confident.
+- Explain with short, factual sentences.
+- Quantify everything; do not guess.
+- If input data is missing or nonsensical, mark "Insufficient data: true".
+- Keep tone professional and analytical.
 
 ---
 
-Do not output JSON. Write a human-readable analysis in the structure above.
-Return nothing outside this format."""
+Do not output JSON.  
+Write only a human-readable report in the structure above — no additional commentary."""
                     st.session_state.current_question = question
             
             # Custom question input
@@ -406,10 +409,16 @@ Return nothing outside this format."""
                     # Display complete prompt sent to Adaptive AI
                     st.markdown("#### 🤖 Complete Prompt Sent to Adaptive AI")
                     complete_prompt = f"""System Prompt:
-You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically. 
-You will receive real campaign data points (ROAS, retention, cohorts) and must walk through the analysis step by step — never skipping or guessing numbers.
+You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically.
 
-Your answer must follow this exact structure (in text form, not JSON):
+You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
+These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
+Do not re-normalize, re-scale, or divide them again.
+
+Your job is to:
+- Evaluate the ROAS curve,
+- Project the day when ROAS will reach or exceed 1.0 (break-even),
+- Explain reasoning clearly, in text, following this structure exactly:
 
 ---
 OK: <true/false>
@@ -434,36 +443,35 @@ Notes:
 - ...
 ---
 
-Follow this analysis process strictly:
+Follow this process strictly:
 
 1️⃣ MODEL  
 Fit a smooth, increasing curve of cumulative ROAS:
-ROAS(t) = Final_ROAS × (1 − exp(−k·t))  
+ROAS(t) = Final_ROAS × (1 − exp(−k·t))
 
-- Choose *k* so that the curve roughly passes through the observed ROAS points.  
-- Choose *Final_ROAS* so that the curve saturates consistently with the retention decay pattern.
-- The curve must be monotonic (each day ≥ previous day).  
-- Continue until ROAS ≥ 1.0; that day = break-even.
+- Use existing roas_d0–roas_d7 points to estimate the shape.
+- The curve must be monotonic (each later day ≥ previous).
+- Final_ROAS should match long-term growth consistent with retention (not exceed plausible limits).
 
 2️⃣ DATES  
-Use the provided cohort start dates to compute actual break-even date range:  
-earliest = min(cohort.start_date) + break_even_day  
-latest = max(cohort.start_date) + break_even_day  
+Use available cohort dates to derive real break-even range:
+earliest = min(start_date) + break_even_day  
+latest = max(start_date) + break_even_day  
 
 3️⃣ RETENTION LINK  
-Adjust the saturation (Final_ROAS) downward if retention declines sharply between d3–d7.  
-Retention tells you how sustainable later conversions are.
+If retention drops sharply after day 3, slow down ROAS growth after that point.
+If retention stabilizes, allow continued gradual improvement.
 
 4️⃣ EXPLANATION STYLE  
-- Explain in short, clear sentences.
-- Quantify every step (don't invent new data).
-- If some inputs are missing, mark them as unavailable and reason cautiously.
-- Keep tone analytical, calm, confident.
+- Explain with short, factual sentences.
+- Quantify everything; do not guess.
+- If input data is missing or nonsensical, mark "Insufficient data: true".
+- Keep tone professional and analytical.
 
 ---
 
-Do not output JSON. Write a human-readable analysis in the structure above.
-Return nothing outside this format.
+Do not output JSON.  
+Write only a human-readable report in the structure above — no additional commentary.
 
 User Prompt:
 Here is the campaign data in JSON format:
