@@ -196,7 +196,7 @@ def show_datasets_tab():
                         df.to_csv(gamlens_path, index=False)
                         
                         # Also ingest using existing system for compatibility
-                    dataset = ingest_file(temp_path, notes=f"Uploaded via Streamlit")
+                        dataset = ingest_file(temp_path, notes=f"Uploaded via Streamlit")
                 
                         st.success(f"✅ Successfully processed: {uploaded_file.name}")
                         st.write(f"- Records: {len(df):,}")
