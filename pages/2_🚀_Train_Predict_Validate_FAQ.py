@@ -220,9 +220,9 @@ def show_datasets_tab():
     
     # Get datasets from database
     try:
-                            db = get_db_session()
+        db = get_db_session()
         datasets = db.query(Dataset).filter(Dataset.ingest_completed_at.isnot(None)).order_by(Dataset.ingest_started_at.desc()).all()
-                                db.close()
+        db.close()
         
         if not datasets:
             st.info("No datasets found. Upload a file above.")
