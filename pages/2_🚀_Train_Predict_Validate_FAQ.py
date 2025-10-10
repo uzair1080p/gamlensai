@@ -226,12 +226,22 @@ def show_predictions_tab():
         try:
             df = get_data_by_source_file(selected_dataset_name)
             
-            # Convert data types
+            # Convert data types - PostgreSQL stores everything as TEXT, so we need to convert
             if 'date' in df.columns:
                 df['date'] = pd.to_datetime(df['date'], errors='coerce')
-            for col in ['cost', 'revenue', 'installs', 'clicks', 'impressions']:
+            
+            # Convert numeric columns from TEXT to numeric types
+            numeric_columns = [
+                'cost', 'revenue', 'installs', 'clicks', 'impressions', 'ad_revenue',
+                'roas_d0', 'roas_d1', 'roas_d3', 'roas_d7', 'roas_d14', 'roas_d30', 'roas_d60', 'roas_d90',
+                'retention_rate_d1', 'retention_rate_d2', 'retention_rate_d3', 'retention_rate_d7', 'retention_rate_d14', 'retention_rate_d30',
+                'level_1_events', 'level_5_events', 'level_10_events', 'level_15_events', 'level_20_events', 'level_25_events', 'level_30_events', 'level_40_events', 'level_50_events'
+            ]
+            
+            for col in numeric_columns:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    # Convert from string to numeric, handling empty strings and nulls
+                    df[col] = pd.to_numeric(df[col].astype(str).replace(['', 'None', 'null', 'NULL'], '0'), errors='coerce').fillna(0)
             
             # Add core KPIs
             df_kpi = add_core_kpis(df)
