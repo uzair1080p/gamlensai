@@ -462,40 +462,68 @@ def show_predictions_tab():
             st.session_state.current_question = question
     
     with col4:
-        if st.button("📈 ROAS Curve Projection", use_container_width=True):
+        if st.button("When will we reach 100% ROAS on each channel?", use_container_width=True):
             # Special prompt for ROAS curve projection
-            question = """You are a careful analytics explainer. Do not invent numbers. Only use the numeric inputs I provide.
-If a value is missing, say so and mark it null. Your job: interpret channel performance and
-project the ROAS curve using the method below. Output valid JSON only.
+            question = """You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance
+and projections clearly and methodically. 
+You will receive real campaign data points (ROAS, retention, cohorts) and must walk through
+the analysis step by step — never skipping or guessing numbers.
 
-Method you must follow (no deviations):
-1) Inputs: aggregate per-day metrics I give you: {roas_d0, roas_d1, roas_d3, roas_d7}, plus
-   average retention at d1, d3, d7, and cost/ad_revenue totals per cohort when available.
-2) Fit a smooth, saturating curve for cumulative ROAS over time:
-   ROAS(t) ≈ Final_ROAS × (1 − exp(−k·t)).
-   - Solve k and Final_ROAS by least-squares on the provided ROAS points (ignore days not reached).
-   - If underdetermined, estimate k by the d0→d3 gradient and refine with d7 if present.
-3) Compute:
-   - break_even_day: smallest t where ROAS(t) ≥ 1.0
-   - break_even_date_range: apply the per-cohort start dates I give; cohorts that haven't matured
-     inherit the same projected t.
-   - projected_final_roas (Final_ROAS), and ROAS at t ∈ {0,1,3,7,10,14,21,30}
-4) Retention rule: your projection should be consistent with the retention decay I provide.
-   If retention is steeper than the fit implies, trim Final_ROAS downward and note the adjustment.
-5) If inputs are inconsistent or insufficient, return "insufficient_data": true and explain why.
+Your answer must follow this exact structure (in text form, not JSON):
 
-Return JSON with this schema:
-{
-  "ok": boolean,
-  "insufficient_data": boolean,
-  "current_avg_roas": number | null,
-  "projected_final_roas": number | null,
-  "break_even_day": number | null,
-  "break_even_date_range": {"earliest": "YYYY-MM-DD" | null, "latest": "YYYY-MM-DD" | null},
-  "daily_projection": [{"day": number, "roas": number}] ,
-  "assumptions": [string],
-  "notes": [string]
-}"""
+---
+OK: <true/false>
+Insufficient data: <true/false>
+Current average ROAS: <value or "N/A">
+Projected final ROAS: <value or "N/A">
+Break-even day: <number or "unknown">
+Break-even date range: earliest <date>, latest <date>
+Daily projection:
+Day 0: <roas>
+Day 1: <roas>
+Day 3: <roas>
+Day 7: <roas>
+Day 10: <roas>
+Day 14: <roas>
+Day 21: <roas>
+Day 30: <roas>
+Assumptions:
+- ...
+- ...
+Notes:
+- ...
+---
+
+Follow this analysis process strictly:
+
+1️⃣ MODEL  
+Fit a smooth, increasing curve of cumulative ROAS:
+ROAS(t) = Final_ROAS × (1 − exp(−k·t))  
+
+- Choose *k* so that the curve roughly passes through the observed ROAS points.  
+- Choose *Final_ROAS* so that the curve saturates consistently with the retention decay pattern.
+- The curve must be monotonic (each day ≥ previous day).  
+- Continue until ROAS ≥ 1.0; that day = break-even.
+
+2️⃣ DATES  
+Use the provided cohort start dates to compute actual break-even date range:  
+earliest = min(cohort.start_date) + break_even_day  
+latest = max(cohort.start_date) + break_even_day  
+
+3️⃣ RETENTION LINK  
+Adjust the saturation (Final_ROAS) downward if retention declines sharply between d3–d7.  
+Retention tells you how sustainable later conversions are.
+
+4️⃣ EXPLANATION STYLE  
+- Explain in short, clear sentences.
+- Quantify every step (don't invent new data).
+- If some inputs are missing, mark them as unavailable and reason cautiously.
+- Keep tone analytical, calm, confident.
+
+---
+
+Do not output JSON. Write a human-readable analysis in the structure above.
+Return nothing outside this format."""
             st.session_state.current_question = question
     
     # Custom question
@@ -526,6 +554,29 @@ Return JSON with this schema:
             # Display response
             st.markdown("### 🤖 AI Response")
             st.markdown(answer)
+            
+            # For ROAS question, also display the data sent to GPT
+            if "When will we reach 100% ROAS on each channel?" in question:
+                st.markdown("### 📊 Data Sent to GPT")
+                
+                # Display campaign data table
+                if 'all_campaigns' in payload:
+                    campaigns_df = pd.DataFrame(payload['all_campaigns'])
+                    st.dataframe(campaigns_df, use_container_width=True)
+                    st.caption(f"📈 Campaign Data: {len(campaigns_df)} records sent to GPT")
+                
+                # Display aggregated data
+                if 'aggregates_channel_country' in payload:
+                    agg_df = pd.DataFrame(payload['aggregates_channel_country'])
+                    st.markdown("#### 📋 Channel-Country Aggregates")
+                    st.dataframe(agg_df, use_container_width=True)
+                    st.caption("📊 Aggregated metrics by channel and country")
+                
+                # Display data format info
+                if 'data_format' in payload:
+                    st.markdown("#### ℹ️ Data Format Information")
+                    for key, value in payload['data_format'].items():
+                        st.text(f"{key}: {value}")
             
             # Add to chat history
             if 'chat_history' not in st.session_state:
