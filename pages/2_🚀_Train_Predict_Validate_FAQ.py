@@ -1,4 +1,4 @@
-"""
+A"""
 Unified GameLens AI page: Train, Predict, Validate, FAQ
 Now integrated with the new gamlens functionality
 """
@@ -444,7 +444,7 @@ def show_predictions_tab():
     
     # Preset questions
     st.write("**Quick Questions:**")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         if st.button("🎯 Which campaigns should we pause?", use_container_width=True):
@@ -459,6 +459,43 @@ def show_predictions_tab():
     with col3:
         if st.button("🚀 Which geo is ready to scale?", use_container_width=True):
             question = "Which geo is ready to scale aggressively? Provide criteria, data support, and risks."
+            st.session_state.current_question = question
+    
+    with col4:
+        if st.button("📈 ROAS Curve Projection", use_container_width=True):
+            # Special prompt for ROAS curve projection
+            question = """You are a careful analytics explainer. Do not invent numbers. Only use the numeric inputs I provide.
+If a value is missing, say so and mark it null. Your job: interpret channel performance and
+project the ROAS curve using the method below. Output valid JSON only.
+
+Method you must follow (no deviations):
+1) Inputs: aggregate per-day metrics I give you: {roas_d0, roas_d1, roas_d3, roas_d7}, plus
+   average retention at d1, d3, d7, and cost/ad_revenue totals per cohort when available.
+2) Fit a smooth, saturating curve for cumulative ROAS over time:
+   ROAS(t) ≈ Final_ROAS × (1 − exp(−k·t)).
+   - Solve k and Final_ROAS by least-squares on the provided ROAS points (ignore days not reached).
+   - If underdetermined, estimate k by the d0→d3 gradient and refine with d7 if present.
+3) Compute:
+   - break_even_day: smallest t where ROAS(t) ≥ 1.0
+   - break_even_date_range: apply the per-cohort start dates I give; cohorts that haven't matured
+     inherit the same projected t.
+   - projected_final_roas (Final_ROAS), and ROAS at t ∈ {0,1,3,7,10,14,21,30}
+4) Retention rule: your projection should be consistent with the retention decay I provide.
+   If retention is steeper than the fit implies, trim Final_ROAS downward and note the adjustment.
+5) If inputs are inconsistent or insufficient, return "insufficient_data": true and explain why.
+
+Return JSON with this schema:
+{
+  "ok": boolean,
+  "insufficient_data": boolean,
+  "current_avg_roas": number | null,
+  "projected_final_roas": number | null,
+  "break_even_day": number | null,
+  "break_even_date_range": {"earliest": "YYYY-MM-DD" | null, "latest": "YYYY-MM-DD" | null},
+  "daily_projection": [{"day": number, "roas": number}] ,
+  "assumptions": [string],
+  "notes": [string]
+}"""
             st.session_state.current_question = question
     
     # Custom question
