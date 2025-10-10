@@ -1,4 +1,4 @@
-A"""
+"""
 Unified GameLens AI page: Train, Predict, Validate, FAQ
 Now integrated with the new gamlens functionality
 """
