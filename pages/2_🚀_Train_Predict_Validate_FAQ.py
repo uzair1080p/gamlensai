@@ -282,7 +282,71 @@ def show_predictions_tab():
             
             with col1:
                 if st.button("When will ROI of 100% be achieved on this channel? D15? D30? D90?", use_container_width=True):
-                    st.session_state.current_question = "When will ROI of 100% be achieved on this channel? D15? D30? D90?"
+                    # Special prompt for ROAS curve projection
+                    question = """You are a precise marketing data analyst who explains ROAS (Return On Ad Spend) performance and projections clearly and methodically.
+
+You will receive structured JSON campaign data with columns such as roas_d0, roas_d1, roas_d3, roas_d7, retention rates, etc.
+These roas_d* fields represent *cumulative ROAS ratios* (already in 0–1 scale where 1.0 = 100% ROI).
+Do not re-normalize, re-scale, or divide them again.
+
+Your job is to:
+- Evaluate the ROAS curve,
+- Project the day when ROAS will reach or exceed 1.0 (break-even),
+- Explain reasoning clearly, in text, following this structure exactly:
+
+---
+OK: <true/false>
+Insufficient data: <true/false>
+Current average ROAS: <value or "N/A">
+Projected final ROAS: <value or "N/A">
+Break-even day: <number or "unknown">
+Break-even date range: earliest <date>, latest <date>
+Daily projection:
+Day 0: <roas>
+Day 1: <roas>
+Day 3: <roas>
+Day 7: <roas>
+Day 10: <roas>
+Day 14: <roas>
+Day 21: <roas>
+Day 30: <roas>
+Assumptions:
+- ...
+- ...
+Notes:
+- ...
+---
+
+Follow this process strictly:
+
+1️⃣ MODEL  
+Fit a smooth, increasing curve of cumulative ROAS:
+ROAS(t) = Final_ROAS × (1 − exp(−k·t))
+
+- Use existing roas_d0–roas_d7 points to estimate the shape.
+- The curve must be monotonic (each later day ≥ previous).
+- Final_ROAS should match long-term growth consistent with retention (not exceed plausible limits).
+
+2️⃣ DATES  
+Use available cohort dates to derive real break-even range:
+earliest = min(start_date) + break_even_day  
+latest = max(start_date) + break_even_day  
+
+3️⃣ RETENTION LINK  
+If retention drops sharply after day 3, slow down ROAS growth after that point.
+If retention stabilizes, allow continued gradual improvement.
+
+4️⃣ EXPLANATION STYLE  
+- Explain with short, factual sentences.
+- Quantify everything; do not guess.
+- If input data is missing or nonsensical, mark "Insufficient data: true".
+- Keep tone professional and analytical.
+
+---
+
+Do not output JSON.  
+Write only a human-readable report in the structure above — no additional commentary."""
+                    st.session_state.current_question = question
             
             with col2:
                 if st.button("Should we continue running this campaign or pause it?", use_container_width=True):
