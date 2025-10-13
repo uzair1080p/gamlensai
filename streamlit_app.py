@@ -93,8 +93,8 @@ if page == "📊 Dashboard":
             total_cost = st.session_state.df_kpi["cost"].sum()
             st.metric("Total Cost", f"${total_cost:,.2f}")
         with col2:
-            total_revenue = st.session_state.df_kpi["revenue"].sum()
-            st.metric("Total Revenue", f"${total_revenue:,.2f}")
+            total_revenue = st.session_state.df_kpi.get("total_revenue", st.session_state.df_kpi.get("revenue", 0)).sum()
+            st.metric("Total Revenue (IAP + Ads)", f"${total_revenue:,.2f}")
         with col3:
             total_installs = st.session_state.df_kpi["installs"].sum()
             st.metric("Total Installs", f"{total_installs:,.0f}")
