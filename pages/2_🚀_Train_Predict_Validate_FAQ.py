@@ -243,7 +243,7 @@ def show_predictions_tab():
                     # Convert from string to numeric, handling empty strings and nulls
                     df[col] = pd.to_numeric(df[col].astype(str).replace(['', 'None', 'null', 'NULL'], '0'), errors='coerce').fillna(0)
             
-            # Add core KPIs
+            # Add core KPIs (computes total_revenue = revenue + ad_revenue)
             df_kpi, summary_table = add_core_kpis(df)
             
             # Store in session state
@@ -257,11 +257,13 @@ def show_predictions_tab():
             with col1:
                 st.metric("Total Cost", f"${df_kpi['cost'].sum():,.2f}")
             with col2:
-                st.metric("Total Revenue", f"${df_kpi['revenue'].sum():,.2f}")
+                total_rev = df_kpi.get('total_revenue', df_kpi.get('revenue', 0)).sum()
+                st.metric("Total Revenue (IAP + Ads)", f"${total_rev:,.2f}")
             with col3:
                 st.metric("Total Installs", f"{df_kpi['installs'].sum():,}")
             with col4:
-                avg_roas = (df_kpi['revenue'].sum() / df_kpi['cost'].sum()) if df_kpi['cost'].sum() > 0 else 0
+                cost_sum = df_kpi['cost'].sum()
+                avg_roas = (total_rev / cost_sum) if cost_sum > 0 else 0
                 st.metric("Average ROAS", f"{avg_roas:.2f}")
             
             # AI Recommendations Section
