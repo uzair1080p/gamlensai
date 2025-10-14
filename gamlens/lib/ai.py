@@ -67,6 +67,23 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
         "hint_rule": "If hint_current_avg_roas is close to 1.0 and trend is increasing, prefer Continue over Pause."
     }
 
+    # Aggregate top-level metrics
+    try:
+        total_cost = float(pd.to_numeric(slim.get("cost", pd.Series([])), errors="coerce").sum())
+        total_rev = float(pd.to_numeric((slim.get("total_revenue") if "total_revenue" in slim.columns else slim.get("revenue", pd.Series([]))), errors="coerce").sum())
+        avg_roas_decimal = float(total_rev / total_cost) if total_cost > 0 else None
+        total_installs = int(pd.to_numeric(slim.get("installs", pd.Series([])), errors="coerce").sum())
+    except Exception:
+        total_cost = total_rev = avg_roas_decimal = None
+        total_installs = None
+
+    metrics = {
+        "total_cost": total_cost,
+        "total_revenue": total_rev,
+        "avg_roas_decimal": avg_roas_decimal,
+        "total_installs": total_installs,
+    }
+
     payload = {
         "schema_version": "v2",
         "dataset_name": dataset_name,
@@ -83,6 +100,7 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
         "all_campaigns": all_data,  # Full data with all ROAS columns for trend analysis
         "aggregates_channel_country": agg.to_dict(orient="records"),
         "guidance": guidance
+        ,"metrics": metrics
     }
     return payload
 
@@ -201,7 +219,7 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
             "7) Validate projection against recent growth; cap unrealistic extrapolations and explain uncertainty.\n"
             "\nDECISION RULES (for pause/continue questions):\n"
             "- If projected final ROAS ≥ 1.0 and break-even ≤ 30 days → Recommend CONTINUE/scale cautiously. Prefer this when guidance.hint_current_avg_roas is near 1.0.\n"
-            "- If 0.70 ≤ projected final ROAS < 1.0 → Recommend OPTIMIZE (cut bottom spend, iterate creatives/targeting).\n"
+            "- If 0.70 ≤ projected final ROAS < 1.0 OR avg_roas_decimal (from metrics) is between 0.5 and 0.99 → Recommend OPTIMIZE (cut bottom spend, iterate creatives/targeting).\n"
             "- If projected final ROAS < 0.70 or growth stalled → Recommend PAUSE/hold and reallocate.\n"
             "- Always justify the recommendation using the same projection figures you computed above.\n"
             "\nOUTPUT (use this exact structure in layman terms):\n"
