@@ -50,6 +50,23 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
            .reset_index()
            .sort_values("cost", ascending=False))
 
+    # Lightweight projection hint (non-binding) to guide the model toward consistency
+    try:
+        obs_cols = [c for c in ROAS_COLS if c in slim.columns]
+        # pick the last non-null ROAS per row, then average across rows
+        def last_obs_roas(row):
+            vals = [row[c] for c in obs_cols if pd.notnull(row[c])]
+            return vals[-1] if vals else pd.NA
+        last_obs_series = slim.apply(last_obs_roas, axis=1)
+        current_avg_roas = float(pd.to_numeric(last_obs_series, errors="coerce").dropna().mean()) if len(last_obs_series.dropna())>0 else None
+    except Exception:
+        current_avg_roas = None
+
+    guidance = {
+        "hint_current_avg_roas": current_avg_roas,
+        "hint_rule": "If hint_current_avg_roas is close to 1.0 and trend is increasing, prefer Continue over Pause."
+    }
+
     payload = {
         "schema_version": "v2",
         "dataset_name": dataset_name,
@@ -65,6 +82,7 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
         "rows_count": int(len(slim)),
         "all_campaigns": all_data,  # Full data with all ROAS columns for trend analysis
         "aggregates_channel_country": agg.to_dict(orient="records"),
+        "guidance": guidance
     }
     return payload
 
@@ -182,7 +200,7 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
             "6) Project the day D* when ROAS will reach 1.0 (100% ROI). If data plateaus below 1.0, state that explicitly.\n"
             "7) Validate projection against recent growth; cap unrealistic extrapolations and explain uncertainty.\n"
             "\nDECISION RULES (for pause/continue questions):\n"
-            "- If projected final ROAS ≥ 1.0 and break-even ≤ 30 days → Recommend CONTINUE/scale cautiously.\n"
+            "- If projected final ROAS ≥ 1.0 and break-even ≤ 30 days → Recommend CONTINUE/scale cautiously. Prefer this when guidance.hint_current_avg_roas is near 1.0.\n"
             "- If 0.70 ≤ projected final ROAS < 1.0 → Recommend OPTIMIZE (cut bottom spend, iterate creatives/targeting).\n"
             "- If projected final ROAS < 0.70 or growth stalled → Recommend PAUSE/hold and reallocate.\n"
             "- Always justify the recommendation using the same projection figures you computed above.\n"
