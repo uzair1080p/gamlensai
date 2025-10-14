@@ -240,8 +240,12 @@ def show_predictions_tab():
             
             for col in numeric_columns:
                 if col in df.columns:
-                    # Convert from string to numeric, handling empty strings and nulls
-                    df[col] = pd.to_numeric(df[col].astype(str).replace(['', 'None', 'null', 'NULL'], '0'), errors='coerce').fillna(0)
+                    # Convert from string to numeric, preserving missing as NaN (do NOT coerce to 0)
+                    # This prevents future-day ROAS from being interpreted as 0 when it's actually unknown
+                    df[col] = pd.to_numeric(
+                        df[col].astype(str).replace(['', 'None', 'null', 'NULL'], pd.NA),
+                        errors='coerce'
+                    )
             
             # Add core KPIs (computes total_revenue = revenue + ad_revenue)
             df_kpi, summary_table = add_core_kpis(df)
