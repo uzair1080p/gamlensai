@@ -181,11 +181,16 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
             "5) Fit a simple trend (piecewise linear or log-saturation) using available points.\n"
             "6) Project the day D* when ROAS will reach 1.0 (100% ROI). If data plateaus below 1.0, state that explicitly.\n"
             "7) Validate projection against recent growth; cap unrealistic extrapolations and explain uncertainty.\n"
+            "\nDECISION RULES (for pause/continue questions):\n"
+            "- If projected final ROAS ≥ 1.0 and break-even ≤ 30 days → Recommend CONTINUE/scale cautiously.\n"
+            "- If 0.70 ≤ projected final ROAS < 1.0 → Recommend OPTIMIZE (cut bottom spend, iterate creatives/targeting).\n"
+            "- If projected final ROAS < 0.70 or growth stalled → Recommend PAUSE/hold and reallocate.\n"
+            "- Always justify the recommendation using the same projection figures you computed above.\n"
             "\nOUTPUT (use this exact structure in layman terms):\n"
             "- Summary (2–4 bullets; percentages).\n"
             "- Key Figures: Average ROAS %, Projected ROAS %, CPI $, ARPU $.\n"
             "- Daily Projection: list days with ROAS in %.\n"
-            "- Recommended Actions: 2–3 bullets, plain language."
+            "- Recommended Actions: explicit Continue/Optimize/Pause per rules above."
         )
     messages = [
         {"role": "system", "content": system},
