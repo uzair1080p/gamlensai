@@ -10,7 +10,7 @@ def add_core_kpis(df: pd.DataFrame):
     out["total_revenue"] = out["revenue"].fillna(0) + out["ad_revenue"].fillna(0)
     
     # Normalize ROAS columns: if values are > 1, assume they're percentages and divide by 100
-    # This handles both decimal format (0.50) and percentage format (50)
+    # Additionally: treat zeros as missing if later-day columns are systematically zero (likely days not reached)
     for col in ROAS_COLS:
         if col in out.columns:
             # Convert to numeric, coercing errors to NaN
@@ -19,6 +19,26 @@ def add_core_kpis(df: pd.DataFrame):
             max_val = out[col].max()
             if pd.notnull(max_val) and max_val > 1:
                 out[col] = out[col] / 100
+
+    # Heuristic: if most roas_d* are exactly 0 for later days, interpret as "not yet occurred"
+    # Replace exact zeros with NaN for days beyond the first non-zero observation to avoid false plateaus
+    try:
+        day_cols_present = [c for c in ROAS_COLS if c in out.columns]
+        if day_cols_present:
+            # Work row-wise
+            def _mask_future_zeros(row):
+                seen_nonzero = False
+                for c in day_cols_present:
+                    v = row.get(c)
+                    if not seen_nonzero and pd.notnull(v) and v > 0:
+                        seen_nonzero = True
+                    elif seen_nonzero and pd.notnull(v) and v == 0:
+                        row[c] = pd.NA
+                return row
+            out[day_cols_present] = out.apply(lambda r: _mask_future_zeros(r)[day_cols_present], axis=1)
+    except Exception:
+        # Best-effort; if anything goes wrong, keep original values
+        pass
 
     out["CPI ($)"]  = (out["cost"] / out["installs"].replace(0, np.nan)).round(2)
     out["ARPU ($)"] = (out["total_revenue"] / out["installs"].replace(0, np.nan)).round(2)
