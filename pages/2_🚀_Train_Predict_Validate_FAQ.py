@@ -27,7 +27,7 @@ if str(gamlens_path) not in sys.path:
 # Import gamlens modules
 from lib.utils import ensure_dirs, read_csv_strict, DATA_DIR
 from lib.kpis import add_core_kpis
-from lib.ai import build_payload_for_ai, ask_one_question, ask_deepseek_question
+from lib.ai import build_payload_for_ai, ask_one_question, ask_deepseek_question, check_answer_consistency
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -497,9 +497,26 @@ Write only a human-readable report in the structure above."""
                     except Exception as e:
                         answer2 = f"❌ Adaptive AI 2 Error: {str(e)}"
                 
-                # Display responses
+                # Consistency check with previous response (if any)
+                verdict = None
+                if 'last_answer' in st.session_state and st.session_state['last_answer']:
+                    with st.spinner("🔍 Checking consistency with previous answer..."):
+                        try:
+                            verdict = check_answer_consistency(api_key, st.session_state['last_answer'], answer1)
+                        except Exception as e:
+                            verdict = f"<Verdict>No</Verdict>\n<VerdictReason>Checker error: {e}</VerdictReason>"
+
+                # If inconsistent, re-ask once favoring optimistic projection question
+                if verdict and "<Verdict>No</Verdict>" in verdict:
+                    with st.spinner("♻️ Answers misaligned — re-running analysis once for consistency..."):
+                        answer1 = ask_one_question(api_key, question, payload)
+
+                # Show final
                 st.markdown("### 🤖 Adaptive AI Response")
                 st.markdown(answer1)
+                if verdict:
+                    with st.expander("Consistency check", expanded=False):
+                        st.code(verdict, language='text')
                 
                 st.markdown("### 🤖 Adaptive AI 2 Response")
                 st.markdown(answer2)
@@ -656,6 +673,7 @@ Question: {question}"""
                     st.session_state.chat_history = []
                 st.session_state.chat_history.append(("User", question))
                 st.session_state.chat_history.append(("Adaptive AI", answer1))
+                st.session_state['last_answer'] = answer1
                 st.session_state.chat_history.append(("Adaptive AI 2", answer2))
                 
                 # Clear current question

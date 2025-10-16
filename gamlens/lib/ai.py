@@ -237,6 +237,40 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
     r = client.chat.completions.create(model=model, messages=messages, temperature=0.1)
     return r.choices[0].message.content
 
+
+def check_answer_consistency(api_key: Optional[str], previous_answer: str, current_answer: str,
+                             model: str = "gpt-4o-mini") -> str:
+    """Ask GPT to check if two answers are aligned. Returns a short verdict string.
+
+    The model must respond following this exact format so we can parse it:
+    <Verdict>Yes</Verdict> or <Verdict>No</Verdict>
+    <Reason>one-line reason of mismatch or confirmation</Reason>
+    """
+    from openai import OpenAI
+    key = _get_api_key(api_key)
+    client = OpenAI(api_key=key)
+
+    system = (
+        "You are an analytics QA agent for a UA marketing platform.\n"
+        "Your task is to compare two analyses about ROAS and recommendations.\n"
+        "Return whether they ALIGN logically.\n"
+        "Rules:\n"
+        "- If both imply break-even within 30 days OR both say not breaking even → Yes.\n"
+        "- If one projects break-even (>=100% ROAS) and the other recommends pause due to <70% projected ROAS → No.\n"
+        "- Prefer the more optimistic answer only if it is numerically consistent (e.g., projected ROAS >= 1.0).\n"
+        "Output EXACTLY in this format for parsing:\n"
+        "<Verdict>Yes|No</Verdict>\n<VerdictReason>one-line reason</VerdictReason>"
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "Previous answer:"},
+        {"role": "user", "content": previous_answer},
+        {"role": "user", "content": "Current answer:"},
+        {"role": "user", "content": current_answer},
+    ]
+    r = client.chat.completions.create(model=model, messages=messages, temperature=0)
+    return r.choices[0].message.content
+
 def ask_deepseek_question(api_key: Optional[str], question: str, payload: dict,
                          model: str = "deepseek-chat") -> str:
     """Send [payload + single question] to DeepSeek Adaptive AI 2 and return the text answer."""
