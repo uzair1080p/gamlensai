@@ -506,10 +506,11 @@ Write only a human-readable report in the structure above."""
                         except Exception as e:
                             verdict = f"<Verdict>No</Verdict>\n<VerdictReason>Checker error: {e}</VerdictReason>"
 
-                # If inconsistent, re-ask once favoring optimistic projection question
+                # If inconsistent, re-ask once forcing ROAS path by appending a clarifier
                 if verdict and "<Verdict>No</Verdict>" in verdict:
+                    reinforced_q = question + "\n(Clarify: Use the ROAS projection method and ensure recommendation matches the projection.)"
                     with st.spinner("♻️ Answers misaligned — re-running analysis once for consistency..."):
-                        answer1 = ask_one_question(api_key, question, payload)
+                        answer1 = ask_one_question(api_key, reinforced_q, payload)
 
                 # Show final
                 st.markdown("### 🤖 Adaptive AI Response")

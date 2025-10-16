@@ -135,7 +135,8 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
 
     # Check if this is a ROAS-specific question
     is_roas_question = any(keyword in question.lower() for keyword in [
-        "roas", "roi", "100%", "break-even", "break even", "reach 100%", "achieve 100%"
+        "roas", "roi", "100%", "break-even", "break even", "reach 100%", "achieve 100%",
+        "pause", "continue", "scale", "should we continue", "should we pause"
     ])
     
     if is_roas_question:
@@ -260,7 +261,7 @@ def check_answer_consistency(api_key: Optional[str], previous_answer: str, curre
 
     The model must respond following this exact format so we can parse it:
     <Verdict>Yes</Verdict> or <Verdict>No</Verdict>
-    <Reason>one-line reason of mismatch or confirmation</Reason>
+    <VerdictReason>one-line reason of mismatch or confirmation</VerdictReason>
     """
     from openai import OpenAI
     key = _get_api_key(api_key)
