@@ -62,9 +62,20 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
     except Exception:
         current_avg_roas = None
 
+    # Observation window: compute max observed ROAS day actually present
+    try:
+        observed_days = []
+        for c in ROAS_COLS:
+            if c in df_kpi.columns and pd.to_numeric(df_kpi[c], errors='coerce').notna().any():
+                observed_days.append(int(c.replace('roas_d','')))
+        max_observed_day = max(observed_days) if observed_days else None
+    except Exception:
+        max_observed_day = None
+
     guidance = {
         "hint_current_avg_roas": current_avg_roas,
-        "hint_rule": "If hint_current_avg_roas is close to 1.0 and trend is increasing, prefer Continue over Pause."
+        "hint_rule": "If hint_current_avg_roas is close to 1.0 and trend is increasing, prefer Continue over Pause.",
+        "observed_roas_max_day": max_observed_day
     }
 
     # Aggregate top-level metrics
@@ -93,7 +104,8 @@ def build_payload_for_ai(df_kpi: pd.DataFrame, dataset_name: str, top_k: int = 1
             "retention_columns": "All retention values (retention_rate_d1, retention_rate_d2, retention_rate_d3, retention_rate_d7, retention_rate_d14, retention_rate_d30) are in DECIMAL format where 1.0 = 100% retention. Example: 0.19 = 19% retention. Use these for retention analysis.",
             "currency_columns": "All monetary values (cost, revenue, ad_revenue, total_revenue, CPI, ARPU) are in dollars ($)",
             "revenue_definition": "total_revenue = revenue + ad_revenue (IAP + Ads). When summarizing revenue, use total_revenue unless explicitly asked for IAP-only revenue.",
-            "percentage_display": "When displaying percentages, multiply decimal values by 100. Example: 0.4 ROAS = 40% ROAS, 0.003 ROAS = 0.3% ROAS"
+            "percentage_display": "When displaying percentages, multiply decimal values by 100. Example: 0.4 ROAS = 40% ROAS, 0.003 ROAS = 0.3% ROAS",
+            "observed_window": "observed_roas_max_day indicates the latest ROAS day with real observations; do NOT assume later days are zero."
         },
         "columns": keep,
         "rows_count": int(len(slim)),
@@ -178,6 +190,10 @@ def ask_one_question(api_key: Optional[str], question: str, payload: dict,
             "1️⃣ MODEL  \n"
             "Fit a smooth, increasing cumulative ROAS curve:\n"
             "ROAS(t) = Final_ROAS × (1 − exp(−k·t))\n\n"
+            "ASSERTIONS you must honor:\n"
+            "- Never treat missing future days as 0; use observed_roas_max_day to delimit observations.\n"
+            "- The recommendation (Continue/Optimize/Pause) must be logically consistent with the break-even projection you state.\n"
+            "- If you estimate break-even within 30 days, you may NOT recommend Pause."
             "- Use observed roas_d* values (d0, d1, d3, d7, etc.) to estimate the curve.\n"
             "- The curve must be monotonic (each later day ≥ previous).\n"
             "- Choose Final_ROAS so that it aligns with retention decay — don't exceed plausible limits.\n"
